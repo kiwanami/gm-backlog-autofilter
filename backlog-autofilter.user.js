@@ -1,0 +1,3374 @@
+// ==UserScript==
+// @name           Backlog-autofilter
+// @namespace      http://kiwanami.net/backlog
+// @include        https://*.backlog.jp/Find*
+// @include        https://*.backlog.jp/find/*
+// @require        http://kiwanami.net/prog/gm_update/UC-20080823.js
+// @version        0.3.0
+// ==/UserScript==
+
+// LICENSE
+//    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
+//    http://www.opensource.org/licenses/mit-license.php
+// 
+// Time-stamp: <2009-11-17 16:34:50 sakurai>
+
+//==================================================
+//# 自動更新機能
+// ref: http://blog.fulltext-search.biz/archives/2008/08/update-checker-4-greasemonkey.html
+
+if (typeof UpdateChecker != "undefined") {
+    new function() {
+        var af_url = 'http://kiwanami.net/prog/gm_backlog/autofilter/backlog-autofilter.user.js';
+        var uc = new UpdateChecker(
+            {
+                script_name: 'Backlog Autofilter'
+                ,script_url: af_url
+                ,current_version: '0.3.0' // ### VERSION ###
+            });
+        GM_registerMenuCommand('Backlog AF - update check', 
+                               function() { 
+                                   GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
+                                   //あんまり美しくない。。。
+                                   uc.script_url = af_url + '?'+(new Date).getTime()+'.user.js';
+                                   uc.check_update();
+                               });
+    }
+}
+
+//==================================================
+//# XPath
+
+// simple version of $X
+// $X(exp);
+// $X(exp, context);
+// @source http://gist.github.com/3242.txt
+//  written by os0x
+function $X (exp, context) {
+  context || (context = document);
+  var expr = (context.ownerDocument || context).createExpression(exp, function (prefix) {
+    return document.createNSResolver(context.documentElement || context).lookupNamespaceURI(prefix) ||
+      context.namespaceURI || document.documentElement.namespaceURI || "";
+  });
+ 
+  var result = expr.evaluate(context, XPathResult.ANY_TYPE, null);
+    switch (result.resultType) {
+      case XPathResult.STRING_TYPE : return result.stringValue;
+      case XPathResult.NUMBER_TYPE : return result.numberValue;
+      case XPathResult.BOOLEAN_TYPE: return result.booleanValue;
+      case XPathResult.UNORDERED_NODE_ITERATOR_TYPE:
+        // not ensure the order.
+        var ret = [], i = null;
+        while (i = result.iterateNext()) ret.push(i);
+        return ret;
+    }
+  return null;
+}
+
+function $(id) {
+    return document.getElementById(id);
+}
+function $$(tagName,cssClass) {
+    return $X("//"+tagName+"[@class='"+cssClass+"']");
+}
+
+//==================================================
+//# CSS Style
+
+var clientWidth  = window.innerWidth;
+var clientHeight = window.innerHeight;
+
+function addStyle(css) { 
+    var csst = css
+        .replace(/;/g,' !important;')
+        .replace(/%HEIGHT%/, ""+(clientHeight*0.8));
+    GM_addStyle(csst);
+}
+
+addStyle(<><![CDATA[
+
+    /* tableのサイズなど調整 */
+    table.autofilter { border: 1px solid grey; border-spacing:0px; border-collapse: separate; }
+    table.autofilter tbody { overflow-x:hidden; overflow-y:scroll; height:%HEIGHT%px; background-color:white; }
+    
+    /* Autofilter の th 表示調整用 */
+    table.autofilter th { cursor:pointer; }
+    th.autofilter-filter { background-color: #81B419; }
+    th.autofilter-sort { background-color: #D3E0EF; }
+    /* ff3で色が付かない？ */
+    table.autofilter tr.odd td { background-color:#f0f0f0; }
+    /* 行が光る */
+    table.autofilter tr:hover td { background-color:#ffffd0; cursor:pointer; }
+    /* 右端のスクロールバー */
+    .autofilter-spacer {width: 5px;}
+    /* 内容の密度をもう少しあげる */
+    table.autofilter td { padding: 2px 2px 2px 4px; height: 28px; overflow-y: visible; }
+    /* 状態の幅を狭める */
+    table.autofilter td.status div { width:auto; }
+    
+    /* Autofilterのステータス表示用 */
+    span.autofilter-status-filter { color: red; }
+    span.autofilter-status-sort { color: blue; }
+    
+    /* Autofilterのメニュー用DIV */
+    #column-menu { position:absolute; z-index:99; background-color:white; border:2px solid grey;}
+    
+    /* カラム選択メニュー用DIV */
+    #column-select-menu { position:absolute; z-index:99; background-color:white; border:2px solid grey; padding:20px; }
+    div.column-select-column-div {float:left; width:24%; overflow: hidden; cursor: pointer; }
+    #column-select-menu hr,br {clear:both; margin-top:10px; }
+    
+    /* 詳細ポップアップ */
+    #popup-taskview { overflow: auto; position:absolute; z-index:99; background-color:white; border:2px solid grey; padding:10px; }
+    #popup-taskview h5 { margin-top: 6px; margin-bottom:3px; color:gray; }
+    
+    /* アクションダイアログ用DIV */
+    #dialog-div { position:absolute; z-index:99; background-color:#F9F8E3; border:2px solid grey; padding:12px; overflow: auto; }
+    #dialog-div > div.form, div.taskList { float: left; width: 48%; padding-right: 10px; }
+    #dialog-div h3 { margin-top: 6px; margin-bottom:10px; color:blue; }
+    #dialog-div h4 { margin-top: 6px; margin-bottom:6px; color:gray; }
+    #dialog-div table { width:100%; }
+    #dialog-div label { margin-left: 10px; }
+    #dialog-div div.dialog-button-panel { margin-top: 10px; text-align: center; }
+                  
+    /* 処理中ダイアログ */
+    #wait-background-div { position: absolute; z-index: 100; background-color: black; opacity: 0.4; }
+    #wait-dialog-div { position: absolute; z-index: 101; background-color: #F9F8E3; border:2px solid grey; padding:12px; overflow: auto;}
+    #wait-dialog-div h3 { margin-top: 6px; margin-bottom:10px; color:black; text-align: center; }
+    #wait-dialog-div div.progressbar { position: relative; width: 80%; height: 30px; background-color: white; margin: 0 auto; border:2px solid grey; overflow: hidden;}
+    #wait-dialog-div div.progress { position: absolute; top: 0px; left: 0px; height: 30px; background-color: #ddd;  z-index: 110;}
+    #wait-dialog-div div.progress-label { position: absolute;  top: 2px; z-index: 111;}
+                  
+    /* その他 */
+    .invisible { display:none; }
+    
+]]></>.toString());
+
+// Calendar include
+var scripts = [
+    "/script/jscalendar/calendar.R20081128.js",
+    "/script/jscalendar/lang/calendar-en.R20081128.js",
+    "/script/jscalendar/lang/calendar-ja.R20081128.js",
+    "/script/jscalendar/calendar-setup.R20081128.js",
+    "/script/popup-dialog.R20081128.js",
+    "/script/dragdrop.R20081128.js"
+].map(function (url) {
+          return E("script",{type:"text/javascript",src:url});
+      });
+scripts.push( E("link",
+                {href    :"/script/jscalendar/calendar-blue.R20081128.css",
+                 rel     : "stylesheet",
+                 type    : "text/css",
+                 charset : "utf-8"}) );
+var head = document.getElementsByTagName('head')[0];
+scripts.forEach(function(item,index) { head.appendChild(item); });
+
+//==================================================
+//# 基本改造
+
+Array.prototype.deleteAt = function(index) { return this.splice(index,1);};
+Array.prototype.copy = function() {return this.map(function(i){ return i;});};
+Function.prototype.bind = function(obj) {
+    var self = this;
+    return function() {
+        return self.apply(obj,arguments);
+    };
+};
+String.prototype.trim = function() {
+    return this.replace(/^\s*/,"").replace(/\s*$/,"");
+};
+var K = function(x){return x;};
+var NOP = function() {};
+function bind(obj,method) {
+    return function() {
+        return obj[method].apply(obj,arguments);
+    };
+}
+function extend(subclass,superclass,members) {
+    for(var i in superclass) {
+        if (superclass[i] instanceof Function) {
+            subclass[i] = superclass[i];
+        }
+    }
+    if (members) {
+        for(var i in members) {
+            if (members[i] instanceof Function) {
+                subclass[i] = members[i];
+            }
+        }
+    }
+}
+// デフォルト値付きハッシュ
+function DHash(h, defaultFunction) {
+    this.hash = h;
+    this.defaultFunction = defaultFunction;
+}
+DHash.prototype.v = function(c) {
+    if (c in this.hash) return this.hash[c];
+    if (this.defaultFunction) {
+        return this.defaultFunction(c);
+    } else {
+        return undefined;
+    }
+};
+
+// Element作成
+function E(tag,attrs,children) {
+    var elm = document.createElement(tag);
+    for(var i in attrs) {
+        if ("id className textContent".indexOf(i) >= 0) {
+            elm[i] = attrs[i];
+        } else {
+            elm.setAttribute(i,attrs[i]);
+        }
+    }
+    if (children) {
+        for(var i=0;i<children.length;i++) {
+            elm.appendChild(children[i]);
+        }
+    }
+    return elm;
+}
+function TXT(content) {
+    return document.createTextNode(content);
+}
+
+function cumulativeOffset(element) { // copied from prototype.js 1.5.0
+    var valueT = 0, valueL = 0;
+    do {
+      valueT += element.offsetTop  || 0;
+      valueL += element.offsetLeft || 0;
+      element = element.offsetParent;
+    } while (element);
+    return [valueL, valueT];
+}
+
+/**
+ 逐次実行オブジェクト
+ 関数を追加していって、startとやると順番に実行する。
+ 関数間の値の引渡しは関与しない。クロージャー等で頑張ること。
+*/
+var FChain = {};
+FChain.STOP_ON_EXCEPTION = new Object();
+FChain.create = function() {
+    var obj = { tasks: [] };
+    obj.onException = function(e) { return FChain.STOP_ON_EXCEPTION;};
+    obj.scheduleATask = function() {
+        if (obj.tasks.length == 0) return;
+        var t = obj.tasks.shift();
+        if (!t) {
+            obj.scheduleATask();
+        } else {
+            setTimeout(function() {
+                try {
+                    t(obj.scheduleATask);
+                } catch (e) {
+                    var er = obj.onException(e);
+                    if (er === FChain.STOP_ON_EXCEPTION) {
+                        return;
+                    }
+                    obj.scheduleATask();
+                }
+            },1);
+        }
+    };
+    obj.start = obj.resume = function() {
+        obj.scheduleATask();
+    };
+    // obj.add( some_function ) とすると、
+    // try { some_function() } catch (e) { ... } do_next_task();
+    // という形で呼ばれる。
+    obj.add = function(t) {
+        obj.tasks.push(function(callback) {
+                try { t(); } catch (e) {
+                if (!obj.force) {
+                    obj.onException(e);
+                    return;
+                }
+            }
+            callback();
+        });
+    };
+    // obj.addc( some_function ); とすると、 
+    // some_function( do_next_task );
+    // という形で呼ばれる。いろいろ引数がある場合はカリー化しておく。
+    obj.addc = function(t) {
+        obj.tasks.push(t);
+    };
+    return obj;
+};
+
+//==================================================
+// 定数
+
+var OPT_ALL          = -1;//すべて
+var OPT_DESC         = -2;//降順ソート
+var OPT_ASC          = -3;//昇順ソート
+var OPT_NOT_EMPTY    = -4;//空白以外
+
+var OPT_SEL_SELECTED_ITEMS     = 1;
+var OPT_SEL_NOT_SELECTED_ITEMS = 2;
+var OPT_SELECT_SHOWEN_ITEMS    = 3;
+var OPT_SELECT_ALL_ITEMS       = 4;
+var OPT_CLEAR_SHOWEN_ITEMS     = 5;
+var OPT_CLEAR_ALL_ITEMS        = 6;
+
+//==================================================
+//# 処理開始用ボタン作成
+
+addChangeViewButton();
+
+function addChangeViewButton() {
+    Array.forEach($X("//td[@class='ico']/a/span"),function(i) {
+        var t = i.innerHTML;
+        i.parentNode.title = t;
+        i.innerHTML = "";
+    });
+    var handler = buildTaskTable;
+    var elm = E("a",{href:"javascript:void(0)", textContent: "[AF]"});
+    var parent = $$("td","ico")[0];
+    elm.addEventListener("click",
+                         function(ev) {
+                             handler && handler();
+                         },false);
+    parent.insertBefore(elm,parent.firstChild);
+}
+
+//==================================================
+//# Autofilter Table の構築の前準備とアクション用GUI作成
+
+function buildTaskTable() {
+
+    var components = 
+        (function(){
+             var container    = $("container");
+             var pagerTables  = $X("//table[@class='pager']");
+             var pagerTds     = $X("//table[@class='pager']//td");
+             var ret = {
+                 container    : container,
+                 pagerTables  : pagerTables,
+                 statusPanel  : pagerTds[0],
+                 searchPanel  : pagerTds[1],
+                 summaryPanel : pagerTds[2],
+                 actionPanel  : pagerTds[3],
+                 mainTable    : $("issues-table")
+             };
+             return ret;
+         })();
+
+    overrideContents();
+    
+    var afTable = new AFTable(components.mainTable,
+                              components.statusPanel,
+                              buildTableColumnModel(),
+                              []);
+    
+    afTable.addUpdateListener(onTableUpdate);
+    makeActionPanel();
+    var searchForSummary = makeFindPanel();
+    setupSettingMenu();
+    includeCSS();
+    loadTaskList();
+    components.reloadTaskList = loadTaskList;
+    var initialSetting = getLastSetting();
+    
+    function loadTaskList() {
+        afTable.setBusyState(true);
+        components.statusPanel.innerHTML = "[ 読み込み中 ... ]";
+        retrieveTaskObjectList( 
+            function(taskList){
+                components.statusPanel.innerHTML = "[ 処理中 ... ]";
+                afTable.updateTaskList(taskList);
+                if (initialSetting) {
+                    afTable.setTableStatus(initialSetting);
+                    initialSetting = null;
+                }
+                afTable.setBusyState(false);
+            });
+    }
+
+    function includeCSS() {
+        var link = E("link",{href    :"/styles/common/loom.R20081128.css",
+                             rel     : "stylesheet",
+                             type    : "text/css",
+                             charset : "utf-8"});
+        var head = document.getElementsByTagName('head')[0];
+        head.appendChild(link);
+    }
+    
+    function overrideContents() {
+        components.statusPanel.innerHTML  = "";
+        components.summaryPanel.innerHTML = "";
+        components.actionPanel.appendChild($("exportForm"));
+
+        //ボタン消去
+        Array.forEach(
+            $X("//td[@class='ico']/a"),function(i) {
+                i.style.display = "none";
+            });
+
+        // NAVIボタン
+        var aa = $X("id('naviBar')//a");
+        [
+            E("span",{textContent:" "}),
+            E("a",{href:aa[0].href,textContent:"[Home]",
+                   id:"navi-home",title:"Home",target:"_blank"}),
+            E("span",{textContent:" "}),
+            E("a",{href:aa[2].href,textContent:"[Add]",
+                   id:"navi-add",title:"課題追加",target:"_blank"}),
+            E("span",{textContent:" "}),
+            E("a",{href:aa[3].href,textContent:"[Wiki]",
+                   id:"navi-wiki",title:"Wiki",target:"_blank"})
+        ].forEach(function(item,index) {
+                      components.actionPanel.appendChild(item);
+                  });
+        
+        //全画面乗っ取り
+        components.container.innerHTML = "";
+        components.container.appendChild( components.pagerTables[0] );
+        components.container.appendChild( components.mainTable );
+        components.container.appendChild( components.pagerTables[1] );
+    }
+    
+    function setupSettingMenu() {
+        //設定ボタン
+        var img = E("img",{src:"/images/common/icons/ico_management_18.gif",alt:"表示設定"});
+        var a = E("a",{href:"javascript:void(0);",alt:"表示設定"},[img]);
+        components.actionPanel.appendChild(a);
+        components.settingButton = a;
+        a.addEventListener("click",
+              function(ev) {
+                  showTableSettingMenu(ev,components,afTable);
+              },false);
+    }
+    
+    function makeFindPanel() {
+        //# インクリメンタル検索機能
+        var model = {
+            searchText: "",
+            searchItems: [],
+            setText: function(t) {
+                this.searchText = t;
+                var samples = t.split(/[ 　]/);//全角と半角
+                this.searchItems = [];
+                for(var i=0;i<samples.length;i++) {
+                    var a = samples[i];
+                    if ((!a) || a.length == 0) continue;
+                    this.searchItems.push(a);
+                }
+            },
+            test: function(obj) {
+                //全部含むときに真
+                for(var k=0;k<this.searchItems.length;k++) {
+                    var a = this.searchItems[k];
+                    if (obj.summary.indexOf(a) == -1 && 
+                        obj.description.indexOf(a) == -1) {
+                        return false;
+                    }
+                }
+                return true;
+            },
+            title: function() {
+                if (this.searchItems.length == 0) return null;
+                return "検索:["+this.searchText+"]";
+            }
+        };
+        
+        var findField = E("input", {type:"text", size: "16"});
+        findField.value = "";
+        var searchPanel = components.searchPanel;
+        searchPanel.innerHTML = "isearch:";
+        searchPanel.appendChild( findField );
+        afTable.setExternalFilter(model);
+        setInterval(
+            function searchInterval() {
+                var t = findField.value;
+                if (model.searchText != t) {
+                    model.setText(t);
+                    afTable.updateTableView();
+                }
+            },800);
+        return model;
+    }
+
+    function makeActionPanel() {
+        var statusPanel = components.statusPanel;
+        var actionPanel = components.actionPanel;
+
+        var reload = E("button",{textContent: "reload"});
+        reload.addEventListener("click",loadTaskList, false);
+        actionPanel.insertBefore(reload, actionPanel.firstChild);
+        
+        var exportElm = E("button",{textContent: "export"});
+        exportElm.addEventListener("click",
+                                   function(ev) {
+                                       ev.stopPropagation();
+                                       exportTableTSV(components,afTable);},
+                                   false);
+        actionPanel.insertBefore(exportElm, actionPanel.firstChild);
+        
+        var popup = E("input",{type:"checkbox",id:"popup-switch"});
+        popup.addEventListener(
+            "change",function(ev) {
+                afTable.setPopupEnable(popup.checked);
+            },false);
+        actionPanel.insertBefore(
+            E("label",{}, [popup,TXT(":popup ")]),
+            actionPanel.firstChild);
+        
+        components.summaryPanel.appendChild(E("span",{textContent: "一括変更:"}));
+        [ {text:"状態",      action:execActionChangeStatus},
+          {text:"担当者",    action:execActionChangeAssigner},
+          {text:"マイルストーン", action:execActionChangeMilestone},
+          {text:"カテゴリー", action:execActionChangeCategory},
+          {text:"種別", action:execActionChangeIssueType},
+          {text:"優先度",    action:execActionChangePriority},
+          {text:"期限日",    action:execActionChangeLimit} ].forEach(
+              function(item,index) {
+                  var elm = E("button",{textContent: item.text});
+                  elm.addEventListener(
+                      "click",function(ev) { item.action(ev,components,afTable); },false);
+                  components.summaryPanel.appendChild(elm);
+              });
+    }
+
+    // 現在の検索条件でタスクの一覧を取得してリストにする
+    // @param callback( alistOfBacklogTasks );
+    function retrieveTaskObjectList(callback) {
+        GM_xmlhttpRequest(
+            {
+                method: 'get',
+                url: BacklogHTML.getCSVURL(),
+                overrideMimeType: document.contentType+"; charset=Windows-31J",
+                onload: function(details){
+                    callback( buildTaskList(details.responseText) );
+                }
+            });
+        
+        function buildTaskList(text) {
+            var list = [];
+            var src = text.split(/\n/);
+            var mapper = BacklogTask.makeCSVMapper(src[0]);
+            for(var i=1;i<src.length;i++) {
+                var line = src[i];
+                if (!line || line.length === 0) continue;
+                list.push(BacklogTask.initByCSV(line,mapper));
+            }
+            list.sort(function(a,b) {return a.id - b.id;});
+            return list;
+        }
+    }
+
+    function buildTableColumnModel() {
+        //# 各カラムごとの違いなどを構築
+        var templateMap = new DHash(
+                { //表示用のテンプレート
+                    keyName: function() {
+                        return "<a href=\"/PreViewIssue.action?key="+this.keyName+"\" target=\"_blank\">"+this.keyName+"</a>";
+                    },
+                    statusName: function() {
+                        return "<div class=\"issue-status-"+this.statusId+"\">"+this.statusName+"</div>";
+                    },
+                    priorityName: function() {
+                        return "<img src=\"/images/common/icons/ico_priority_"+
+                            this.priorityId+".gif\"/><span class=\"invisible\">"+
+                            this.priorityName+"</span>";
+                    }
+                });
+
+        var sortMap = new DHash(
+                { //名前でなくてIDで並べたい
+                    keyName      : "keyId",
+                    statusName   : "statusId",
+                    priorityName : "priorityId"
+                },K);
+
+        var classMap = new DHash(
+            { //表示用のクラスは別名
+                issueTypeName : "issue-type",
+                summary       : "title",
+                version       : "affected_version",
+                milestone     : "fixed_version",
+                createdUser   : "user",
+                assigner      : "user"
+            },function(i) { return i.replace("Name","");});
+        
+        var filterMap = new DHash(
+            { //各カラムに独自のフィルター項目を追加する場合
+                statusName:[
+                    new CustomFilterOption("完了以外", -10, function(i) { return i != "完了"; })
+                ]
+            });
+
+        //表示するカラム
+        var tableColumnModel = new TableColumnModel("keyName issueTypeName componentName summary priorityName versionName milestoneName created startDate limitDate estimatedHours actualHours updated createdUserName assignerName statusName".split(" "));
+        //デフォルトで表示しないカラム
+        var defaultOffColumns = "startDate estimatedHours actualHours".split(" ");
+
+        tableColumnModel.each(
+            function( columnId, model ) {
+                var pClassName = "p_"+columnId.replace("Name","");//表示制御用
+                var className  = classMap.v(columnId);//レイアウト用
+
+                model.thId         = "th-"+pClassName;
+                model.thClassName  = pClassName;
+                model.tdClassName  = className+" "+pClassName;
+                model.columnName   = BacklogTask.cmap[columnId];
+                model.sortColumnId = sortMap.v(columnId);
+                model.dataTemplate = templateMap.v(columnId);
+                model.visible      = (defaultOffColumns.indexOf(columnId) == -1);
+                
+                if (filterMap.v(columnId)) {
+                    filterMap.v(columnId).forEach(
+                        function(item,index) {
+                            model.customFilterOptions.push(item);
+                        });
+                }
+            });
+        
+        return tableColumnModel;
+    }
+}
+
+//==================================================
+//# Autofilterの部品
+
+// AutoFilterの動作の元になるカラムごとの設定をまとめたクラス
+//     columnId ... TableModel のカラムを識別するID
+//   カラムの並び順
+//   各カラムのID、名前、CSSの定義
+//   カスタムフィルターの定義
+function TableColumnModel(_columnIds) {
+    var self = this;
+    
+    var columnIds = _columnIds; // カラムの表示順序
+    var columnModels = {};      // カラムの中身 columnId -> model
+    
+    function ColumnModel(_columnId) {
+        this.columnId            = _columnId; // カラム識別用の内部ID
+        this.columnName          = _columnId; // thに表示するタイトル
+        
+        this.thId                = _columnId; // thに付加するHTMLのID
+        this.tdClassName         = _columnId; // td用のクラス
+        this.thClassName         = _columnId; // th用のクラス
+        
+        this.sortColumnId        = _columnId; // ソートに使用するカラムID
+        this.customFilterOptions = [];    // フィルターメニューに特注で追加する機能
+        this.dataTemplate        = null;  // tdをレイアウトするときに使用するテンプレート
+        
+        this.visible             = true;  // このカラムを表示するかどうか
+    }
+    //public: カラムの表示用HTMLを返す
+    ColumnModel.prototype.getListHTML = function(obj) {
+        if (this.dataTemplate) {
+            return this.dataTemplate.call(obj);
+        } else {
+            var data = obj[this.columnId];
+            if  (data === undefined || data === null) return "";
+            return data;
+        }
+    };
+    //public: このカラムのカスタム選択項目を option_id で検索する。
+    ColumnModel.prototype.getCustomOptionById = function(optionId) {
+        var ret = null;
+        this.customFilterOptions.forEach(
+            function(item,index) {
+                if (item.optionId === optionId) {
+                    ret = item;
+                }
+            });
+        return ret;
+    };
+    
+    columnIds.forEach(
+        function(i,index) {
+            columnModels[i] = new ColumnModel(i);
+        });
+
+    //public: 設定保存用
+    this.getModelStatus = function () {
+        var ret = {};
+        this.each(function(columnId,cmodel) {
+                      ret[columnId] = {visible: cmodel.visible};
+                 });
+        return ret;
+    };
+    //public: 設定読み込み用
+    this.setModelStatus = function (data) {
+        if (!data) return;
+        this.each(function(columnId,cmodel) {
+                      if(data[columnId]) {
+                          cmodel.visible = data[columnId].visible;
+                      }
+                  });
+    };
+    
+    //順不同
+    this.getColumnModels = function() {
+        return columnModels;
+    };
+
+    //順番は保存
+    this.getColumnIds = function() {
+        return columnIds;
+    };
+    
+    //順番維持したままループ
+    this.each = function( f ) { // f(columnId, columnModel)
+        for(var i=0;i<columnIds.length;i++) {
+            var c = columnIds[i];
+            var item = columnModels[c];
+            f(c,item);
+        }
+    };
+
+    //指定カラムのモデルを取得。ソート用のカラムIDでも取れる。
+    this.getColumnModel = function(columnId) {
+        var ret = columnModels[columnId];
+        if (ret) return ret;
+        for(var i in columnModels) {
+            var m = columnModels[i];
+            if (m.sortColumnId === columnId) {
+                ret = m;
+            }
+        }
+        return ret;
+    };
+}
+
+// 追加のフィルターメニュー機能
+//   filterTitle: メニューに表示される名前
+//   optionId:    selectやこのオブジェクトを識別するID（各カラムで一意）
+//   testFunc:    フィルター関数: false を返すと削られる
+function CustomFilterOption(filterTitle,optionId,testFunc) {
+    this.filterTitle = filterTitle;
+    this.optionId = optionId;
+    this.testFunc = testFunc;
+}
+
+//# 表示からカラム設定用の簡易ダイアログ表示
+function showTableSettingMenu(event, components, afTable) {
+    var self = this;
+    var menuElm = $("columns-select-menu");
+    if (menuElm) {
+        document.body.removeChild(menuElm);
+    }
+    
+    menuElm = E("div",{id: "column-select-menu", className:"loom"});
+    var tbody = components.mainTable.getElementsByTagName("tbody")[0];
+    var pos = cumulativeOffset(tbody);
+    var size = {w: tbody.offsetWidth, h: tbody.offsetHeight};
+    size.innerWidth = size.w*0.8;
+    size.space = size.w*0.1;
+    menuElm.style.left = (pos[0]+size.space)+"px";
+    menuElm.style.top  = (pos[1]+20)+"px";
+    menuElm.style.width = size.innerWidth+"px";
+    menuElm.appendChild(E("h4",{textContent:"カラムの表示設定"}));
+    menuElm.addEventListener("click",function(ev) {ev.stopPropagation();},false);
+    
+    var columnsDiv = E("div");
+    var columnModel = afTable.getTableColumnModel();
+    var checkboxMap = {};//columnId -> checkbox
+    columnModel.each(
+        function(columnId,cmodel) {
+            var check = E("input",{type:"checkbox"});
+            var cdiv = E("div",{className:"column-select-column-div"},
+                         [check,TXT(" : "+cmodel.columnName)]);
+            columnsDiv.appendChild(cdiv);
+            checkboxMap[columnId] = check;
+            cdiv.addEventListener("click",
+                      function(ev) {
+                          cmodel.visible = !cmodel.visible;
+                          updateCheckboxes(columnId);
+                          ev.stopPropagation();
+                      },true);
+        });
+    menuElm.appendChild(columnsDiv);
+    
+    menuElm.appendChild(E("br"));
+    var closeButton = E("button",{textContent:"閉じる"});
+    closeButton.addEventListener("click",
+                    function(ev) { clearMenu(); },false);
+    menuElm.appendChild(E("div",{style:"margin-top:20px; text-align:center;"},[closeButton]));
+
+    document.body.appendChild(menuElm);
+    updateCheckboxes();
+
+    document.body.addEventListener("click",clearMenu,false);
+    event.stopPropagation();
+    
+    function updateCheckboxes(hintColumnId) {
+        columnModel.each(
+            function(columnsId,cmodel) {
+                checkboxMap[columnsId].checked = cmodel.visible;
+            });
+        if (hintColumnId) { //hintがある場合は更新する
+            afTable.updateTableView();
+        }
+    }
+    
+    function clearMenu() {
+        document.body.removeEventListener("click",clearMenu,false);
+        try {
+            document.body.removeChild(menuElm);
+        } catch (e) { }//もみ消し
+    }
+}
+
+function serializeKey() {
+    return "taskview-"+BacklogHTML.getProjectKey();
+}
+
+function onTableUpdate(afTable) {
+    var str = uneval(afTable.getTableStatus());
+    GM_setValue(serializeKey(), str);
+}
+
+function getLastSetting() {
+    return eval(GM_getValue(serializeKey(), null));
+}
+
+//==================================================
+//#  まとめ処理
+
+// まとめ処理用ダイアログ
+// 例：
+//    var dialog = new ActionDialog(components,afTable);
+//    if (!dialog.validate) return;
+//    dialog.title = function(task) { ... } //表示方法
+//    dialog.form = formElm; //フォーム突っ込む
+//    dialog.onOk = function() { ... } 
+//       //trueで閉じる、falseで閉じない
+//    dialog.show();
+
+function ActionDialog(components,afTable) {
+    var self = this;
+    this.validate = true;
+    this.components = components;
+    this.afTable = afTable;
+    
+    this.tasks = afTable.getSelectedTasks();
+    if (this.tasks.length == 0) {
+        alert("タスクが選ばれていません。");
+        this.validate = false;
+        return;
+    }
+}
+ActionDialog.prototype.show = function() {
+    var self = this;
+    var dialogElm = $('dialog-div');
+    if (dialogElm) {
+        document.body.removeChild(dialogElm);
+    }
+    
+    //外側ダイアログ作成
+    dialogElm = E("div",{id: "dialog-div",className:"loom"});
+    var tbody = this.components.mainTable.getElementsByTagName("tbody")[0];
+    var pos = cumulativeOffset(tbody);
+    var size = {w: tbody.offsetWidth, h: tbody.offsetHeight};
+    size.innerWidth = size.w*0.75;
+    size.innerHeight = size.h*0.70;
+    size.space = size.w/2 - size.innerWidth/2;
+    dialogElm.style.left = (pos[0]+size.space)+"px";
+    dialogElm.style.top  = (pos[1]+20)+"px";
+    dialogElm.style.width = size.innerWidth+"px";
+    dialogElm.style.height = size.innerHeight+"px";
+    dialogElm.appendChild(E("h3",{textContent:self.title}));
+    dialogElm.addEventListener("click",function(ev) {ev.stopPropagation();},false);
+    
+    //タスク一覧
+    var taskListElm = E("div",{className:"taskList"});
+    dialogElm.appendChild(taskListElm);
+    taskListElm.appendChild(E("h4",{textContent:"対象タスク："+this.tasks.length+"件"}));
+    var ulElm = E("ul");
+    this.tasks.forEach(
+        function(task,index) {
+            ulElm.appendChild(E("li",{textContent:self.taskView(task)}));
+        });
+    taskListElm.appendChild(ulElm);
+
+    //フォーム画面
+    var formElm = E("div",{className:"form"});
+    formElm.appendChild(E("h4",{textContent:"更新情報"}));
+    var tableElm = E("table");
+    var form = E("form",{},[tableElm]);
+    formElm.appendChild(form);
+    function addRow(title,elm) {
+        var tr = E("tr",{},[ E("td",{},[TXT(title)]), E("td",{},[elm]) ]);
+        tableElm.appendChild(tr);
+    }
+    this.form(formElm,addRow);
+    
+    // OK and cancel
+    var buttonPanel = E("div",{className:"dialog-button-panel"});
+    var okButton = E("button",{textContent:"　　登録　　"});
+    okButton.addEventListener("click",
+                 function(ev) {
+                     // onOk は true で閉じる
+                     // false だと閉じない(バリデーションなどで利用)
+                     if (self.onOk) {
+                         if (self.onOk()) {
+                             clearDialog();
+                         }
+                     } else {
+                         clearDialog();
+                     }
+                     ev.stopPropagation();
+                 },false);
+    buttonPanel.appendChild(okButton);
+    var cancelButton = E("button",{textContent:" キャンセル "});
+    cancelButton.addEventListener("click",
+                     function(ev) {
+                         clearDialog();
+                     },false);
+    buttonPanel.appendChild(cancelButton);
+    formElm.appendChild(buttonPanel);
+    dialogElm.appendChild(formElm);
+    
+    document.body.appendChild(dialogElm);
+    document.body.addEventListener(
+        "click",
+        function(ev) { // カレンダークリックでダイアログが閉じないようにする
+            function searchCalDiv(node) {
+                if (node.className == "calendar") {
+                    ev.stopPropagation();
+                    return true;
+                }
+                if (node.parentNode) {
+                    return searchCalDiv(node.parentNode);
+                }
+                return false;
+            }
+            // クリックされたのがカレンダーの中だったら閉じない
+            if (!searchCalDiv(ev.target)) {
+                clearDialog();
+            }
+        },false);
+    function clearDialog() {
+        document.body.removeEventListener("click",clearDialog,false);
+        try {
+            document.body.removeChild(dialogElm);
+        } catch (e) { }//もみ消し
+    }
+};
+
+function execActionChangeStatus(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクの状態変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+task.statusName+")";
+    };
+    //フォーム画面
+    var statusOptions,assignerElm,resolutionElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        statusOptions = BacklogAPI.STATUSES.map(
+            function (item) {
+                return E("label",{},
+                         [ E("input",{type:"radio",name:"status",value:item.id}),
+                           TXT(item.name) 
+                         ]);
+            });
+        addRow("状態：",E("div",{}, statusOptions));
+        assignerElm = E("select",{name:"assigner"},[]);
+        addRow("担当者：",assignerElm);
+        BacklogAPI.retrieveUsers(
+            function(userList) {
+                assignerElm.appendChild(E("option",{textContent:"[ 変更しない ]", value:"-1"}));
+                for (var i = 0; i < userList.length; i++) {
+                    var user = userList[i];
+                    assignerElm.appendChild(E("option",{textContent:user.name, value:user.id}));
+                }
+            });
+        resolutionElm =E("select",{name:"resolution"},[]);
+        addRow("完了理由：",resolutionElm);
+        resolutionElm.appendChild(E("option",{textContent:"[ 変更しない ]",value:"-1"}));
+        for (var i = 0; i < BacklogAPI.RESOLUTIONS.length; i++) {
+            var res = BacklogAPI.RESOLUTIONS[i];
+            resolutionElm.appendChild(E("option",{textContent:res.name, value:res.id}));
+        }
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var statusId = -1;
+        for each (var c in statusOptions) {
+            if (!c.tagName) continue;
+            var chk = c.getElementsByTagName("input")[0];
+            if (chk.checked) {
+                statusId = parseInt(chk.value,10);
+                break;
+            }
+        }
+        if (statusId < 0) {
+            alert("状態を選んでください");
+            return false;
+        }
+        param.statusId = statusId;
+        var userId = parseInt(assignerElm.value,10);
+        if (userId > 0) param.assignerId = userId;
+        var resId = parseInt(resolutionElm.value,10);
+        if (resId > 0) param.resolutionId = resId;
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("状態変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskStatus(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function execActionChangeAssigner(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクの担当者変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+task.assignerName+")";
+    };
+    //フォーム画面
+    var assignerElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        assignerElm = E("select",{name:"assigner"},[]);
+        addRow("担当者：",assignerElm);
+        BacklogAPI.retrieveUsers(
+            function(userList) {
+                assignerElm.appendChild(E("option",{textContent:"[空にする]", value:"-1"}));
+                for (var i = 0; i < userList.length; i++) {
+                    var user = userList[i];
+                    assignerElm.appendChild(E("option",{textContent:user.name, value:user.id}));
+                }
+            });
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var userId = parseInt(assignerElm.value,10);
+        if (userId > 0) {
+            param.assignerId = userId;
+        } else {
+            //担当者を空にする
+            param.assignerId = null;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("担当者変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function execActionChangeMilestone(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクのマイルストーン変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+(task.milestoneName||"なし")+")";
+    };
+    //フォーム画面
+    var milestoneElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        milestoneElm = E("select",{name:"milestone"},[]);
+        addRow("マイルストーン：",milestoneElm);
+        BacklogAPI.retrieveVersions(
+            function(versionList) {
+                milestoneElm.appendChild(E("option",{textContent:"[空にする]", value:"-1"}));
+                for (var i = 0; i < versionList.length; i++) {
+                    var v = versionList[i];
+                    milestoneElm.appendChild(E("option",{textContent:v.name, value:v.id}));
+                }
+            });
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var userId = parseInt(milestoneElm.value,10);
+        if (userId > 0) {
+            param.milestoneId = userId;
+        } else {
+            //マイルストーンを空にする
+            param.milestoneId = null;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("マイルストーン変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function execActionChangeCategory(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクのカテゴリー変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+(task.componentName||"なし")+")";
+    };
+    //フォーム画面
+    var categoryElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        categoryElm = E("select",{name:"category"},[]);
+        addRow("カテゴリー：",categoryElm);
+        BacklogAPI.retrieveComponents(
+            function(categoryList) {
+                categoryElm.appendChild(E("option",{textContent:"[空にする]", value:"-1"}));
+                for (var i = 0; i < categoryList.length; i++) {
+                    var v = categoryList[i];
+                    categoryElm.appendChild(E("option",{textContent:v.name, value:v.id}));
+                }
+            });
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var categoryId = parseInt(categoryElm.value,10);
+        if (categoryId > 0) {
+            param.componentId = categoryId;
+        } else {
+            //カテゴリーを空にする
+            param.componentId = null;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("カテゴリー変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function execActionChangeLimit(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクの期限日変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+(task.limitDate||"なし")+")";
+    };
+    //フォーム画面
+    var limitElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        limitElm = E("input",{type:"text",name:"limitDate",id:"limitDate",size:10});
+        var spanElm = E("span");
+        spanElm.innerHTML = "<a href='javascript:void(0);' id='limitDateCalendar'><img src='/images/common/icons/ico_calendar02.gif' alt='' /><span>カレンダーから選択</span></a>";
+        spanElm.insertBefore(limitElm,spanElm.firstChild);
+        addRow("期限日：",spanElm);
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+
+    dialog.onOk = function() {
+        var param = {};
+        var datef = limitElm.value;
+        if (datef.match(/[0-9]{4}\/?[0-9]{2}\/?[0-9]{2}/)) {
+            param.due_date = datef.replace(/\//g,"");
+        } else {
+            //期限日を空にする
+            param.due_date = null;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("期限日変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+
+    if (unsafeWindow.Calendar) {
+        unsafeWindow.Calendar.setup(
+            {
+		        inputField	: "limitDate",
+		        ifFormat	: "%Y/%m/%d",
+		        showsTime	: false,
+	            button      : "limitDateCalendar",
+		        align		: "Bl",
+		        singleClick	: true,
+		        weekNumbers : false
+	        });
+    }
+}
+
+function execActionChangePriority(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクの優先度変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+task.priorityName+")";
+    };
+    //フォーム画面
+    var priorityElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        priorityElm = E("select",{name:"priority"},[]);
+        addRow("優先度：",priorityElm);
+        priorityElm.appendChild(E("option",{textContent:"[ 未設定 ]",value:"-1"}));
+        for (var i = 0; i < BacklogAPI.PRIORITIES.length; i++) {
+            var res = BacklogAPI.PRIORITIES[i];
+            priorityElm.appendChild(E("option",{textContent:res.name, value:res.id}));
+        }
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var priorityId = parseInt(priorityElm.value,10);
+        if (priorityId > 0) {
+            param.priorityId = priorityId;
+        } else {
+            alert("新しい優先度を設定してください。");
+            return false;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("優先度変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function execActionChangeIssueType(event,components,afTable) {
+    event.stopPropagation();
+    var dialog = new ActionDialog(components,afTable);
+    if (!dialog.validate) return;
+
+    dialog.title = "タスクの種別変更";
+    dialog.taskView = function(task){
+        return task.keyName+" : "+task.summary+" ("+task.issueTypeName+")";
+    };
+    //フォーム画面
+    var issueTypeElm,commentElm;
+    dialog.form = function(formElm,addRow) {
+        issueTypeElm = E("select",{name:"issueType"},[]);
+        addRow("種別：",issueTypeElm);
+        BacklogAPI.retrieveIssueTypes(
+            function(issueTypeList) {
+                for (var i = 0; i < issueTypeList.length; i++) {
+                    var v = issueTypeList[i];
+                    issueTypeElm.appendChild(E("option",{textContent:v.name, value:v.id}));
+                }
+            });
+        commentElm = E("textarea",{name:"comment",rows:5},[]);
+        addRow("コメント：",commentElm);
+    };
+    
+    dialog.onOk = function() {
+        var param = {};
+        var issueTypeId = parseInt(issueTypeElm.value,10);
+        if (issueTypeId > 0) {
+            param.issueTypeId = issueTypeId;
+        } else {
+            alert("新しい種別を設定してください。");
+            return false;
+        }
+        var comment = commentElm.value;
+        if (comment && comment.length > 0) param.comment = comment;
+        
+        var fchain = FChain.create();
+        var waitDlg = new WaitDialog("種別変更中・・・", dialog.tasks.length);
+        dialog.tasks.forEach(
+            function(item,index) {
+                fchain.addc(
+                    function(doNext) {
+                        param.key = item.keyName;
+                        BacklogAPI.changeTaskData(
+                            param,function(res) {
+                                waitDlg.step();
+                                doNext();
+                            });
+                });
+            });
+        fchain.add(function() {waitDlg.close();});
+        fchain.add(components.reloadTaskList);
+        fchain.onException = function(e) {
+            waitDlg.close();
+            console.log("fchain error: %o",e);
+            alert("タスク処理中にエラーになりました。\n処理を中断しましたので、内容を確認してください。\n"+e);
+            return FChain.STOP_ON_EXCEPTION;
+        };
+        fchain.start();
+        return true;
+    };
+    dialog.show();
+}
+
+function exportTableTSV(components, afTable) {
+    var ret = [];
+    var tableRows = afTable.getTableDataAsCells();
+    for (var i=0;i<tableRows.length;i++) {
+        var cols = tableRows[i];
+        ret.push(cols.join("\t"));
+    }
+    var text = ret.join("\n");
+    
+    //以下のべた書きを何とかしたい
+    var dialogElm = E("div",{id: "dialog-div",className:"loom"});
+    var tbody = components.mainTable.getElementsByTagName("tbody")[0];
+    var pos = cumulativeOffset(tbody);
+    var size = {w: tbody.offsetWidth, h: tbody.offsetHeight};
+    size.innerWidth = size.w*0.75;
+    size.innerHeight = size.h*0.65;
+    size.space = size.w/2 - size.innerWidth/2;
+    dialogElm.style.left = (pos[0]+size.space)+"px";
+    dialogElm.style.top  = (pos[1]+20)+"px";
+    dialogElm.style.width = size.innerWidth+"px";
+    dialogElm.style.height = size.innerHeight+"px";
+    dialogElm.appendChild(E("h3",{textContent:"タブ区切りでエクスポート"}));
+    dialogElm.addEventListener("click",function(ev) {ev.stopPropagation();},false);
+
+    dialogElm.appendChild(E("span",{textContent:"コピーしてExcelに貼り付けてください。"}));
+    var textArea = E("textarea",{name:"copy", rows:5, cols:80});
+    textArea.value = text;
+    dialogElm.appendChild(textArea);
+    
+    var buttonPanel = E("div",{className:"dialog-button-panel"});
+    var cancelButton = E("button",{textContent:"   閉じる   "});
+    cancelButton.addEventListener("click",
+                     function(ev) {
+                         clearDialog();
+                     },false);
+    buttonPanel.appendChild(cancelButton);
+    dialogElm.appendChild(buttonPanel);
+
+    document.body.appendChild(dialogElm);
+    document.body.addEventListener("click", function(ev) { clearDialog(); } ,false);
+    
+    function clearDialog() {
+        document.body.removeEventListener("click",clearDialog,false);
+        try {
+            document.body.removeChild(dialogElm);
+        } catch (e) { }//もみ消し
+    }
+}
+
+//==================================================
+//#  Wait dialog
+
+function WaitDialog(title, countNum) {
+    var self = this;
+
+    //以前のゴミ削除
+    var bgElm = $('wait-background-div');
+    bgElm && document.body.removeChild(bgElm);
+    var dialogElm = $('wait-dialog-div');
+    dialogElm && document.body.removeChild(dialogElm);
+    
+    //サイズ計算
+    var size = {w: window.innerWidth, h: window.innerHeight};
+    size.innerWidth = size.w*0.5;
+    size.innerHeight = 100;
+    size.space = size.w/2 - size.innerWidth/2;
+
+    //背景作成
+    bgElm = E("div",{id: "wait-background-div"});
+    bgElm.style.left = "0px";
+    bgElm.style.top = "0px";
+    bgElm.style.width = size.w+"px";
+    bgElm.style.height = size.h+"px";
+
+    //表のダイアログ
+    dialogElm = E("div",{id: "wait-dialog-div"});
+    dialogElm.style.left = size.space+"px";
+    dialogElm.style.top  = (size.h/2 - size.innerHeight/2)+"px";
+    dialogElm.style.width = size.innerWidth+"px";
+    dialogElm.style.height = size.innerHeight+"px";
+    
+    //プログレスバーコンポーネントにしたい
+    var progressbarElm = E("div",{className:"progressbar"});
+    var progressElm = E("div",{className:"progress"});
+    progressElm.style.width = "0px";
+    var progressLabelElm = E("div",{className: "progress-label",textContent:"0 %"});
+    
+    //組み立て
+    document.body.appendChild(bgElm);
+    document.body.appendChild(dialogElm);
+    dialogElm.appendChild(E("h3",{textContent: title}));
+    dialogElm.appendChild(progressbarElm);
+    progressbarElm.appendChild(progressElm);
+    progressbarElm.appendChild(progressLabelElm);
+    progressLabelElm.style.left = (progressbarElm.offsetWidth/2-progressLabelElm.offsetWidth/2)+"px";
+
+    this.bgElm = bgElm;
+    this.dialogElm = dialogElm;
+    this.progressElm = progressElm;
+    this.progressLabelElm = progressLabelElm;
+    this.counterWidth = progressbarElm.offsetWidth;
+    this.countNum = countNum;
+    this.counter = 0;
+}
+WaitDialog.prototype.step = function() {
+    this.counter += 1;
+    this.progressElm.style.width = (this.counterWidth * this.counter/this.countNum)+"px";
+    this.progressLabelElm.textContent = (Math.floor(100*this.counter/this.countNum))+" %";
+}
+WaitDialog.prototype.close = function() {
+    document.body.removeChild(this.bgElm);
+    document.body.removeChild(this.dialogElm);
+}
+
+//==================================================
+//#  Autofilter Table class
+
+function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
+    var afTable = this;
+
+    var taskList = _taskList;
+    function getTaskById(id) {
+        if ( typeof(id) == "string" || id instanceof String) {
+            id = parseInt(id,10);
+        }
+        for(var i=0;i<taskList.length;i++) {
+            if (taskList[i].id == id) {
+                return taskList[i];
+            }
+        }
+        return null;
+    }
+
+    var tableColumnModel = _tableColumnModel; // 列の情報のまとめ
+    this.getTableColumnModel = function() {
+        return tableColumnModel;
+    };
+
+    // elements
+    var statusElm = _statusElm; // 現在の検索条件などを表示する領域
+    var tableElm = _tableElm;   // このautofilterが取り付くテーブル
+    var theadElm, tbodyElm;     // ヘッダーと表の本体
+
+    //#=====(状態管理)========================================
+    // 参照：THメニュー、Popup
+    var TSAbstract = {
+        onClickTHColumn: NOP,
+        onClickTHSelection: NOP,
+        canShowPopup: function() { return false; },
+        transState: function(nextState) { 
+            tableState = nextState;
+        }
+    };
+    
+    //通常状態
+    function TSNormal() {}
+    extend(TSNormal.prototype, TSAbstract, {
+               //thがクリックされたときに呼ばれる
+               onClickTHColumn: function onClickTHColumn(event,columnId) {
+                   showTHColumnMenu(event,columnId);
+               },
+               //選択列をクリックされたとき
+               onClickTHSelection: function onClickTHSelection(event) {
+                   showTHSelectionMenu(event);
+               },
+               canShowPopup: function() { return true; }
+        });
+    
+    //THのautofilterのメニューを出している状態
+    function TSTHMenu(menuManager,columnId) {
+        this.menuManager = menuManager;
+        this.columnId = columnId;//nullの場合selection
+        this.startTime = new Date();
+    }
+    extend(TSTHMenu.prototype, TSAbstract, {
+               isDoubleClick: function() {
+                   var now = new Date();
+                   //500msecでダブルクリック認定
+                   return ( (now.getTime() - this.startTime.getTime()) < 500 );
+               },
+               onClickTHColumn: function onClickTHColumn(event, columnId) {
+                   if (this.columnId != columnId) {
+                       showTHColumnMenu(event,columnId);
+                   } else {
+                       if (this.isDoubleClick()) {
+                           execDoubleClickAction(this.menuManager);
+                       } else {
+                           this.menuManager.finishMenu();
+                           tableState.transState(new TSNormal());
+                       }
+                       event.stopPropagation();
+                   }
+               },
+               onClickTHSelection: function onClickTHSelection(event, columnId) {
+                   if (columnId) {
+                       showTHSelectionMenu(event);
+                   } else {
+                       if (this.isDoubleClick()) {
+                           execDoubleClickAction(this.menuManager);
+                       } else {
+                           this.menuManager.finishMenu();
+                           tableState.transState(new TSNormal());
+                       }
+                       event.stopPropagation();
+                   }
+               }
+           });
+    
+    //busy状態
+    function TSBusy() {
+    }
+    extend(TSBusy.prototype, TSAbstract, { });
+    
+    var tableState = new TSNormal();
+
+    //#=====(テーブル初期化)========================================
+    function setupTable() {
+        if (tableElm.className.indexOf("autofilter") == -1) {
+            tableElm.className += " autofilter";
+        }
+        tableElm.innerHTML = "";
+        var ths = [];
+
+        var sel = E("th",{id:"th-selection",className:"p_selection",textContent:"■"});
+        sel.addEventListener("click",function(ev) {
+                                 tableState.onClickTHSelection(ev);
+                             },false);
+        ths.push(sel);
+
+        tableColumnModel.each(
+            function(columnId,model) {
+                var th = E("th",
+                           {className: model.thClassName,
+                            nowrap: "nowrap",
+                            id: model.thId
+                           });
+                th.textContent = model.columnName;
+                th.addEventListener("click",function(ev) {
+                                        tableState.onClickTHColumn(ev,columnId);
+                },false);
+                ths.push(th);
+            });
+
+        ths.push(E("th",{className:"autofilter-spacer"}));
+        theadElm = E("thead",{},ths);
+        tableElm.appendChild(theadElm);
+        tbodyElm = E("tbody",{});
+        tableElm.appendChild(tbodyElm);
+    }
+    setupTable();
+
+    //#=====(ソート管理)========================================
+    var sortModel = {
+        keys:[], //sort用に {key:columnId,way:OPT_ASC,DESC} のオブジェクトを入れる
+        getModelStatus: function() {
+            return this.keys;
+        },
+        setModelStatus: function(data) {
+            this.keys = data;
+        },
+        clear:function() { this.keys = []; },
+        getIndex:function(key) {
+            key = tableColumnModel.getColumnModel(key).sortColumnId;
+            var keys = this.keys;
+            for(var i=0;i<keys.length;i++) {
+                if (keys[i].key == key) {
+                    return i;
+                }
+            }
+            return -1;
+        },
+        add:function(key,way) { // way: OPT_ASC, OPT_DESC
+            key = tableColumnModel.getColumnModel(key).sortColumnId;
+            var i = this.getIndex(key);
+            if(i >= 0) {
+                this.keys.deleteAt(i);
+            }
+            this.keys.push({key:key,way:way});
+        },
+        remove:function(key) {
+            key = tableColumnModel.getColumnModel(key).sortColumnId;
+            var i = this.getIndex(key);
+            if(i >= 0) {
+                this.keys.deleteAt(i);
+            }
+        },
+        sort: function(taskList) {
+            var keys = this.keys;
+            if (keys.length == 0) return taskList;
+            taskList.sort(//意外に遅くない
+                function(t1,t2) {
+                    for(var i=0;i<keys.length;i++) {
+                        var sortInfo = keys[i];
+                        var negtive = (sortInfo.way == OPT_ASC) ? -1 : 1;
+                        var v1 = t1[sortInfo.key], v2 = t2[sortInfo.key];
+                        if (v1 == v2) continue;
+                        else return (v1 < v2) ? negtive : -negtive;
+                    }
+                    return 0;
+                });
+            return taskList;
+        },
+        summary: function() {
+            if (this.keys.length === 0) return "";
+            return "[ sort: "+
+                this.keys.map(
+                    function(i){
+                        var w = (i.way == OPT_DESC) ? "↑" : "↓";
+                        return tableColumnModel.getColumnModel(i.key).columnName + w;
+                    }).join(" / ")+"  ]";
+        }
+    };
+
+    //#=====(カラム、フィルター管理)========================================
+    var filterModel = {
+        columns: (function() {
+                      var model = {};
+                      tableColumnModel.each(
+                          function(columnId,columnModel) {
+                              model[columnId] = {
+                                  values: [], //カラム内の値一覧（AF用）
+                                  filter: null, //AF用フィルター候補
+                                  //nullですべて, filter用インタフェース(test,title)
+                                  th: $(columnModel.thId)
+                              };
+                          });
+                      return model;
+                  })(),
+        selectionFilter: null, //チェックボックスによるフィルター
+        externalFilter: null,  //外部フィルター
+        getModelStatus: function() {
+            var self = this;
+            var ret = {}; //{columnId: {value:(value), optionId:(optionId)}, ... }
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    var fv = self.columns[columnId].filter;
+                    if (fv) {
+                        if (fv.optionId < 0) {
+                            ret[columnId] = { optionId: fv.optionId };
+                        } else {
+                            ret[columnId] = { value: fv.value };
+                        }
+                    }
+                });
+            if (self.selectionFilter) {
+                ret.__selection__filter = {optionId: self.selectionFilter.optionId};
+            }
+            if (self.externalFilter) {
+                //もし必要なら
+            }
+            return ret;
+        },
+        setModelStatus: function(data) { //更新はしない
+            this.clear();
+            //data = {columnId: {value:(value), optionId:(optionId)}, ... }
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    var d = data[columnId];
+                    if (d) {
+                        var actions = makeMenuActions( columnId );
+                        if (d.optionId) {
+                            findByOptionId(actions,d.optionId).perform(null);
+                        } else {
+                            findByValue(actions,d.value).perform(null);
+                        }
+                    }
+                });
+            if (data.__selectionFilter__) {
+                this.selectionFilter = findByOptionId(makeSelectionMenuActions(),
+                                                      data.__selectionFilter__.optionId);
+            }
+            function findByOptionId(actions,optionId) {
+                for(var i=0;i<actions.length;i++) {
+                    if (actions[i].optionId === optionId) {
+                        return actions[i];
+                    }
+                }
+                return {perform:K};
+            }
+            function findByValue(actions,value) {
+                for(var i=0;i<actions.length;i++) {
+                    if (actions[i].value === value) {
+                        return actions[i];
+                    }
+                }
+                return {perform:K};
+            }
+        },
+        updateColumnValues: function(_taskList) {
+            var self = this;
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    self.columns[columnId].values = getColumnValues(columnId);
+                });
+            //重複を取り除いた一覧を返す
+            function getColumnValues(cid) {
+                var map = {}, list = [];
+                for(var i=0;i<_taskList.length;i++) {
+                    var v = _taskList[i][cid];
+                    if (!(v in map)) {
+                        map[v] = v;
+                        list.push(v);
+                    }
+                }
+                list.sort();
+                return list;
+            }
+        },
+        existsBlank: function(columnId) {
+            var ret = false;
+            this.columns[columnId].values.forEach(function(i) {if (i == "") ret = true;});
+            return ret;
+        },
+        clear: function() {
+            var self = this;
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    self.columns[columnId].filter = null;
+                });
+        },
+        filter: function(taskList) {
+            var columnIds = tableColumnModel.getColumnIds();
+            var filteredList = [];
+            for(var i=0;i<taskList.length;i++) {
+                if (isVisibleTask.call(this,taskList[i])) {
+                    filteredList.push(taskList[i]);
+                }
+            }
+            return filteredList;
+
+            function isVisibleTask(task) {
+                for(var j=0;j<columnIds.length;j++) {
+                    var cid = columnIds[j];
+                    var fv = this.columns[cid].filter;
+                    if (!fv) continue;
+                    if (!fv.test(task[cid])) {
+                        return false;
+                    }
+                }
+                if (this.selectionFilter && !this.selectionFilter.test(task.id)) {
+                    return false;
+                }
+                if (this.externalFilter && !this.externalFilter.test(task)) {
+                    return false;
+                }
+                return true;
+            }
+        },
+        updateThs: function() { //TRのクラスを現在の状態にあわせる
+            var self = this;
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    var column = self.columns[columnId];
+                    column.th.className =
+                        [columnModel.thClassName,
+                         (column.filter !== null) ? "autofilter-filter" : "",
+                         (sortModel.getIndex(columnId) != -1) ? "autofilter-sort" : ""].join(" ");
+                    if (columnModel.visible) {
+                        column.th.style.display = "";
+                    } else {
+                        column.th.style.display = "none";
+                    }
+                });
+            
+            var selectionTh = $("th-selection");
+            selectionTh.className = ["p_selection", (self.selectionFilter) ? "autofilter-filter" : ""].join(" ");
+        },
+        summary: function() {
+            var self = this;
+            var list = [];
+            tableColumnModel.each(
+                function(columnId,columnModel) {
+                    var fv = self.columns[columnId].filter;
+                    if (fv !== null) {
+                        list.push( columnModel.columnName+":"+fv.title );
+                    }
+                });
+            if (self.selectionFilter) {
+                list.push(self.selectionFilter.title);
+            }
+            if (self.externalFilter && self.externalFilter.title()) {
+                list.push(self.externalFilter.title());
+            }
+            if (list.length === 0) return "";
+            return "[ filter: "+list.join(" / ")+" ]";
+        },
+        setSelectionFilter: function(filter) {
+            this.selectionFilter = filter;
+        }
+    };
+    filterModel.updateColumnValues(taskList);
+    
+    //#=====(選択状態管理)========================================
+    var selectionModel = {
+        selectedTasks:{}, //taskListのidをキーにしたオブジェクト
+        getModelStatus: function() {
+            var ret = [];
+            for(var i in this.selectedTasks) {
+                ret.push(i);
+            }
+            return ret;
+        },
+        setModelStatus: function(data) {
+            this.selectedTasks = {};
+            for(var i=0;i<data.length;i++) {
+                var task = getTaskById(data[i]);
+                if (task) this.selectedTasks[data[i]] = task;
+            }
+        },
+        getSelectedCount: function() {
+            var count = 0;
+            for(var i in this.selectedTasks) count++;
+            return count;
+        },
+        select: function(ids) { //taskListのidか配列
+            if (ids instanceof Array) {
+                for(var i=0;i<ids.length;i++) {
+                    this.selectedTasks[ids[i]] = getTaskById(ids[i]);
+                }
+            } else {
+                this.selectedTasks[ids] = getTaskById(ids);
+            }
+        },
+        remove: function(ids) {
+            if (ids instanceof Array) {
+                for(var i=0;i<ids.length;i++) {
+                    delete this.selectedTasks[ids[i]];
+                }
+            } else {
+                delete this.selectedTasks[ids];
+            }
+        },
+        isSelected: function(id) {
+            return !!this.selectedTasks[id];
+        },
+        isNotSelected: function(id) {
+            return !this.isSelected(id);
+        },
+        // GUI関係 (onClickRow以外は基本的にGUIを自動で更新しない)
+        // 行クリック
+        onClickRow: function(task,checkboxElm) {
+            if (!selectionModel.isSelected(task.id)) {
+                this.select(task.id);
+                checkboxElm.checked = true;
+            } else {
+                this.remove(task.id);
+                checkboxElm.checked = false;
+            }
+            updateTableStatusElement();
+        },
+        // 見えているタスクのチェックボックス一覧に何かする
+        //  block( checkbox, taskId(int) )
+        _iterateShowedCheckboxes: function( block ) { 
+            var checkboxes = tbodyElm.getElementsByTagName("input");
+            for(var i=0;i<checkboxes.length;i++) {
+                if (!checkboxes[i].id) continue;
+                var m = checkboxes[i].id.match(/sel-(.+)/);
+                if (m) {
+                    var id = parseInt(m[1],10);
+                    block(checkboxes[i],id);
+                }
+            }
+        },
+        // 見えているタスクだけクリア
+        clearShowedTasks: function() {
+            var self = this;
+            this._iterateShowedCheckboxes(
+                function(checkbox, id) { 
+                    self.remove(id);
+                });
+        },
+        // 見えているタスクだけチェック
+        selectShowedTasks: function() {
+            var self = this;
+            this._iterateShowedCheckboxes(
+                function(checkbox, id) { 
+                    self.select(id);
+                });
+        },
+        //THダブルクリックの処理
+        reverseShowedTasks: function() { 
+            //全部チェックされていたら消す。
+            //それ以外の場合は全部チェックする
+            var checkedAll = true;
+            this._iterateShowedCheckboxes(
+                function(checkbox, id) { 
+                    checkedAll = checkedAll && checkbox.checked;
+                });
+            if (checkedAll) {
+                this.clearShowedTasks();
+            } else {
+                this.selectShowedTasks();
+            }
+        },
+        clearAll: function() {
+            this.selectedTasks = {};
+        },
+        selectAll: function() {
+            for(var i=0;i<taskList.length;i++) {
+                this.select(taskList[i].id);
+            }
+        },
+        updateSelectionFromModel: function() {
+            var self = this;
+            this._iterateShowedCheckboxes(
+                function(checkbox, id) { 
+                    checkbox.checked = self.isSelected(id);
+                });
+        },
+        // taskListが更新されて、selectionModelの選択されていたリストを
+        // アップデートする必要があるときに呼ばれる
+        maintainSelectedTasks: function(taskList) {
+            var removeList = [];
+            for(var i in this.selectedTasks) {
+                if (!_task(i)) {
+                    removeList.push(i);
+                }
+            }
+            this.remove(removeList);
+            
+            function _task(id) {
+                id = parseInt(id,10);
+                for(var i=0; i<taskList.length; i++) {
+                    if (taskList[i].id == id) {
+                        return taskList[i];
+                    }
+                }
+                return null;
+            }
+        }
+    };
+
+    var updateListener = []; // このaftableの情報が更新されたときに呼ばれるイベントリスナー達
+
+    //# AFTable public functions
+    
+    //public: 更新リスナー追加
+    afTable.addUpdateListener = function(a) {
+        if (a) {
+            updateListener.push(a);
+        }
+    };
+
+    function fireUpdateEvent() {
+        if (!taskList || taskList.length == 0) return;
+        updateListener.forEach(
+            function(item,index) {
+                item(afTable);
+            });
+    }
+    
+    //public: 現在のフィルターとソート設定をエクスポートする
+    afTable.getTableStatus = function() {
+        return {
+            filter: filterModel.getModelStatus(),
+            sort: sortModel.getModelStatus(),
+            selection: selectionModel.getModelStatus(),
+            columnModels: tableColumnModel.getModelStatus()
+        };
+    };
+
+    //public: フィルターとソート設定をインポートする
+    afTable.setTableStatus = function(data) {
+        if (!data) return;
+        tableColumnModel.setModelStatus(data.columnModels);
+        filterModel.setModelStatus(data.filter);
+        sortModel.setModelStatus(data.sort);
+        selectionModel.setModelStatus(data.selection);
+        afTable.updateTableView();
+    };
+    
+    //public: table外部のフィルターを設定する（全文検索など）
+    afTable.setExternalFilter = function(filter) {
+        filterModel.externalFilter = filter;
+    };
+    
+    //public: 現在選択されているタスクの一覧を返す
+    afTable.getSelectedTasks = function() {
+        var ret = [];
+        for(var i in selectionModel.selectedTasks) {
+            ret.push(getTaskById(i));
+        }
+        return ret;
+    };
+
+    //public: 引数のデータに変更して描画しなおす
+    afTable.updateTaskList = function(newTaskList) {
+        taskList = newTaskList;
+        filterModel.updateColumnValues(taskList);
+        selectionModel.maintainSelectedTasks(taskList);
+        afTable.updateTableView();
+    };
+    
+    //public: フィルター、ソートをクリアして再描画する
+    afTable.clearFilters = function() {
+        sortModel.clear();
+        filterModel.clear();
+        afTable.updateTableView();
+    };
+    
+    //public: テーブルのbusy状態を切り替える
+    afTable.setBusyState = function(isBusy) {
+        if (isBusy) {
+            tableState.transState( new TSBusy() );
+        } else {
+            tableState.transState( new TSNormal() );
+        }
+    };
+    
+    //public: 現在のフィルターとソート設定で内容を2次元配列に入れる
+    afTable.getTableDataAsCells = function() {
+        var sortedTaskList = sortModel.sort(filterModel.filter(taskList));
+        var columnIds = tableColumnModel.getColumnIds();
+        var rows = [];
+        var dummyElm = E("div");
+        
+        var ths = ["選択"];
+        tableColumnModel.each(
+            function(columnId,model) {
+                var cm = tableColumnModel.getColumnModel(columnId);
+                if (!cm.visible) return;
+                ths.push(model.columnName);
+            });
+        rows.push(ths);
+        
+        for(var i=0;i<sortedTaskList.length;i++) {
+            var tds = [];
+            var task = sortedTaskList[i];
+            tds.push( selectionModel.isSelected(task.id) ? "○" : "" );
+            for(var j=0;j<columnIds.length;j++) {
+                var cid = columnIds[j];
+                var cm = tableColumnModel.getColumnModel(cid);
+                if (!cm.visible) continue;
+                var td = E("td",{className: cm.tdClassName});
+                dummyElm.innerHTML = cm.getListHTML(task);
+                tds.push( dummyElm.textContent );
+            }
+            rows.push(tds);
+        }
+        return rows;
+    };
+
+    //public: 現在のフィルターなどの設定でテーブルを再描画
+    afTable.updateTableView = function() {
+        //prepare data
+        var sortedTaskList = sortModel.sort(filterModel.filter(taskList));
+        
+        var columnIds = tableColumnModel.getColumnIds();
+
+        //make rows
+        var fragment = document.createDocumentFragment();
+        for(var i=0;i<sortedTaskList.length;i++) {
+            var tds = [];
+            var task = sortedTaskList[i];
+
+            var selectionElm = E("td",{className: "p_selection"});
+            var selectionCheckElm = E("input",{id:"sel-"+task.id,type:"checkbox"});
+            selectionElm.appendChild(selectionCheckElm);
+            tds.push(selectionElm);
+
+            for(var j=0;j<columnIds.length;j++) {
+                var cid = columnIds[j];
+                var cm = tableColumnModel.getColumnModel(cid);
+                if (!cm.visible) continue;
+                var td = E("td",{className: cm.tdClassName});
+                td.innerHTML = cm.getListHTML(task);
+                tds.push(td);
+            }
+            tds.push(E("td",{className:"autofilter-spacer"}));
+
+            var tr = E("tr",{className: (i%2 === 0) ? "even" : "odd"},tds);
+            tr.setAttribute("taskId",task.id);//for popup display
+            with({task:task, checkboxElm:selectionCheckElm}) {
+                tr.addEventListener("click",function(ev) {
+                                        if (ev.target && ev.target.href) {
+                                            return true;//リンクは何もしない
+                                        }
+                                        return selectionModel.onClickRow(task,checkboxElm);
+                                    },false);
+            }
+            fragment.appendChild(tr);
+        }
+
+        tbodyElm.innerHTML = "";
+        tbodyElm.appendChild(fragment);
+
+        updateTableStatusElement();
+        filterModel.updateThs();
+        selectionModel.updateSelectionFromModel();
+    };
+
+    //テーブルのステータスを更新する時（再描画、選択変更）に呼ばれる
+    function updateTableStatusElement() {
+        var showCount = tbodyElm.getElementsByTagName("tr").length;
+        statusElm.innerHTML =
+            ["[ 表 ",showCount,
+             " / 選 ",selectionModel.getSelectedCount(),
+             " / 全 ",taskList.length," ]",
+             "<span class=\"autofilter-status-filter\">",
+             filterModel.summary(),"</span>",
+             "<span class=\"autofilter-status-sort\">",
+             sortModel.summary(),"</span>"].join(" ");
+        
+        //reset button
+        var reset = E("button",{textContent: "[x]", title:"clear all filters"});
+        reset.addEventListener("click", function(ev) { afTable.clearFilters();}, false);
+        statusElm.appendChild(reset);
+
+        fireUpdateEvent(); //ステータスが変わるような時はupdateされてると仮定
+    }
+    
+    //==================================================
+    //# Autofilterのメニュー関係
+
+    //  フィルターの表示、動作に必要な情報を集めたクラス
+    function ColumnFilter(columnId, optionId, value, title) {
+        // カラムID
+        this.columnId = columnId;
+        // select の option の value の値。
+        this.optionId = optionId;
+        if (typeof(value) == "function") {
+            this.test = value;
+        } else {
+            // フィルターで比較に使う値
+            this.value = value;
+            // 引数のオブジェクトを表示するかどうか。trueで表示。
+            this.test = function(i) {
+                return i === this.value;
+            };
+        }
+        // ステータス表示に表示するもの。
+        this.title = title;
+    }
+    function NotEmptyFilter(columnId) {
+        this.columnId = columnId;
+        this.optionId = OPT_NOT_EMPTY;
+        this.test = function(i) {
+            return i != "";
+        };
+        this.title = "空白以外";
+    }
+
+    // メニューの各項目の表示、動作に必要な情報をまとめたクラス
+    // arg = {columnId, value, title, optionId, [action,isSelected]
+    function AutofilterMenuAction(arg) {
+        this.columnId = arg.columnId;
+        this.value = arg.value;
+        this.title = arg.title;
+        this.optionId = arg.optionId;
+        this.perform = arg.action || K;
+        this.isSelected = arg.isSelected || K;
+        this.optionElm = 
+            E("option",{value:this.optionId,
+                        textContent:this.title});
+    }
+    
+    function MenuManager(thElm) {
+        var self = this;
+        var menuElm = $('column-menu');
+        if (menuElm) {
+            document.body.removeChild(menuElm);
+        }
+        menuElm = E("div",{id: "column-menu"});
+        var pos = cumulativeOffset(thElm);
+        menuElm.style.left = pos[0]+"px";
+        menuElm.style.top  = (pos[1]+thElm.offsetHeight+1)+"px";
+        var selectElm = E("select",{size:10});
+
+        this.setWidth = function(width) {
+            var menuWidth = width+"px";
+            menuElm.style.width = menuWidth;
+            selectElm.style.width = menuWidth;
+        };
+        this.setWidth(thElm.offsetWidth+35);
+
+        menuElm.appendChild(selectElm);
+        document.body.appendChild(menuElm);
+        
+        this.finishMenu = function() {
+            self.closeDIV();
+            tableState.transState(new TSNormal());
+        };
+        this.closeDIV = function() {
+            document.body.removeEventListener("click",self.finishMenu,false);
+            try {
+                document.body.removeChild(menuElm);
+            } catch (e) { }//もみ消し
+        };
+        this.doubleClickAction = NOP;
+                        
+        document.body.addEventListener("click",this.finishMenu,false);
+        
+        var actionMap = []; // index -> action
+
+        selectElm.addEventListener("change",onSelectOption,false);
+        function onSelectOption(ev) {
+            try {
+                var action = actionMap[selectElm.selectedIndex];
+                var leaveFlag = false;
+                if (action) {
+                    leaveFlag = action.perform(ev);
+                }
+                if (!leaveFlag) {
+                    afTable.updateTableView();
+                }
+            } catch (e) {
+                console.log(e);
+            } finally {
+                self.finishMenu();
+                ev.stopPropagation();
+            }
+        }
+        this.setActions = function(_actions,_doubleClickAction) {
+            var selectedIndex = -1;
+            _actions.forEach(
+                function(item,index) {
+                    selectElm.appendChild(item.optionElm);
+                    actionMap.push(item);
+                    if (item.optionId) {
+                        if (selectedIndex == -1 && item.isSelected()) {
+                            selectedIndex = index;
+                        }
+                    }
+                });
+            selectElm.selectedIndex = selectedIndex;
+            selectElm.setAttribute("size",Math.min(10,_actions.length));
+            if (_doubleClickAction) {
+                this.doubleClickAction = _doubleClickAction;
+            }
+        };
+    }
+
+    //普通のthメニュー表示
+    function showTHColumnMenu(event,columnId) {
+        var fmodel = filterModel.columns[columnId];
+        var menu = new MenuManager(fmodel.th);
+        menu.setActions( makeMenuActions(columnId), function() {
+                             fmodel.filter = null;
+                             sortModel.remove(columnId);
+                             afTable.updateTableView();
+                         });
+        tableState.transState(new TSTHMenu(menu,columnId));
+        event.stopPropagation();//thで処理したので伝搬ストップ
+        window.getSelection().removeAllRanges();
+    }
+    
+    //選択列メニュー表示
+    function showTHSelectionMenu(event) {
+        var th = $("th-selection");
+        var menu = new MenuManager(th);
+        menu.setWidth(230);
+        menu.setActions( makeSelectionMenuActions(), function() {
+                             selectionModel.reverseShowedTasks();
+                             selectionModel.updateSelectionFromModel();
+                             updateTableStatusElement();
+                         });
+        tableState.transState(new TSTHMenu(menu,null));
+        event.stopPropagation();//thで処理したので伝搬ストップ
+        window.getSelection().removeAllRanges();
+    }
+    
+    //THをダブルクリックされたとき
+    function execDoubleClickAction(menuManager) {
+        menuManager.finishMenu();
+        menuManager.doubleClickAction();
+        tableState.transState(new TSNormal());
+        window.getSelection().removeAllRanges();
+    }
+    
+    //指定した列のメニューActionの配列を作る
+    function makeMenuActions(columnId) {
+        var fmodel = filterModel.columns[columnId];
+        var cmodel = tableColumnModel.getColumnModel(columnId);
+        var actions = [];
+        //   標準機能的項目
+        actions.push(
+            new AutofilterMenuAction(
+                {
+                    columnId:columnId, title:"[ すべて ]",
+                    optionId:OPT_ALL,
+                    action: function act(ev) {
+                        fmodel.filter = null;
+                        sortModel.remove(columnId);
+                    },
+                    isSelected: function isSelected() {
+                        return (!fmodel.filter) && (sortModel.getIndex(columnId) == -1);
+                    }
+                }));
+        [{title:"[ ↓昇順  ]",value:OPT_ASC}, {title:"[ ↑降順  ]",value:OPT_DESC}].forEach(
+            function(item,index) {
+                actions.push(
+                    new AutofilterMenuAction(
+                        {
+                            columnId:columnId, title:item.title,
+                            optionId:item.value,
+                            action: function act(ev) {
+                                if (!(fmodel.filter instanceof NotEmptyFilter)) {
+                                    fmodel.filter = null;//[空白以外]は残していて良いかも
+                                }
+                                sortModel.add(columnId, item.value);
+                            },
+                            isSelected: function isSelected() {
+                                var sortKeyIndex = sortModel.getIndex(columnId);
+                                if (sortKeyIndex >= 0) {
+                                    return sortModel.keys[sortKeyIndex].way == item.value;
+                                }
+                                return false;
+                            }
+                        }));
+            });
+
+        if (filterModel.existsBlank(columnId)) {
+            actions.push(
+                new AutofilterMenuAction(
+                    {
+                        columnId:columnId, title:"[空白以外]",
+                        optionId:OPT_NOT_EMPTY,
+                        action: function act(ev) {
+                            fmodel.filter = new NotEmptyFilter(columnId);
+                        },
+                        isSelected: function isSelected() {
+                            return fmodel.filter instanceof NotEmptyFilter;
+                        }
+                    }));
+        }
+
+        //中身のSELECTとOPTIONを用意
+        //   自動で集めた項目
+        fmodel.values.forEach(
+            function(value,_index) {
+                var index = _index+1;
+                var title = (value == "") ? "[  空白  ]" : value;
+                actions.push(
+                    new AutofilterMenuAction(
+                        {
+                            columnId:columnId,value:value,
+                            title:title,optionId:index,
+                            action: function act(ev) {
+                                fmodel.filter = new ColumnFilter(columnId,index,value,title);
+                                sortModel.remove(columnId);
+                            },
+                            isSelected: function isSelected() {
+                                return fmodel.filter && fmodel.filter.optionId === index;
+                            }
+                        }));
+            });
+
+        //   カスタム機能項目
+        cmodel.customFilterOptions.forEach(
+            function(item,index) {
+                actions.push(
+                    new AutofilterMenuAction(
+                        {
+                            columnId: columnId,
+                            title: "["+item.filterTitle+"]",
+                            optionId: item.optionId,
+                            action: function act(ev) {
+                                fmodel.filter = 
+                                    new ColumnFilter(columnId,item.optionId,
+                                                     item.testFunc,item.filterTitle);
+                                sortModel.remove(columnId);
+                            },
+                            isSelected: function isSelected() {
+                                return fmodel.filter && fmodel.filter.optionId === item.optionId;
+                            }
+                        }));
+            });
+        return actions;
+    }
+    
+    //選択列のメニューActionの配列を作る
+    function makeSelectionMenuActions() {
+        var actions = [
+            new AutofilterMenuAction(
+                {            
+                    title:"[  すべて  ]",
+                    optionId:OPT_ALL,
+                    action: function act(ev) {
+                        filterModel.setSelectionFilter(null);
+                    },
+                    isSelected: function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_ALL);
+                    }}),
+            new AutofilterMenuAction(
+                {
+                    title:"[v]選択済み",optionId:OPT_SEL_SELECTED_ITEMS,
+                    action: function act(ev) {
+                        filterModel.setSelectionFilter({title:"選択済",optionId:OPT_SEL_SELECTED_ITEMS,
+                                                        test:bind(selectionModel,"isSelected")});
+                    },
+                    isSelected: function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_SELECTED_ITEMS);
+                    }}),
+            new AutofilterMenuAction(
+                {
+                    title:"[ ]非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
+                    action:function act(ev) {
+                        filterModel.setSelectionFilter({title:"非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
+                                                        test:bind(selectionModel,"isNotSelected")});
+                    },
+                    isSelected: function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_NOT_SELECTED_ITEMS);
+                    }}),
+            new AutofilterMenuAction({title:"----------"}),
+            
+            new AutofilterMenuAction(
+                {
+                    title:"●表示されているものにチェック",optionId:OPT_SELECT_SHOWEN_ITEMS,
+                 action:function act(ev) {
+                     selectionModel.selectShowedTasks();
+                     selectionModel.updateSelectionFromModel();
+                     updateTableStatusElement();
+                     return true;
+                 },
+                 isSelected:function isSelected() {
+                     return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_SHOWEN_ITEMS);
+                 }}),
+            new AutofilterMenuAction(
+                {
+                    title:"○表示されているものをクリア",optionId:OPT_CLEAR_SHOWEN_ITEMS,
+                    action:function act(ev) {
+                        selectionModel.clearShowedTasks();
+                        selectionModel.updateSelectionFromModel();
+                        updateTableStatusElement();
+                        return true;
+                    },
+                    isSelected:function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_SHOWEN_ITEMS);
+                    }}),
+            new AutofilterMenuAction({title:"----------"}),
+            
+            new AutofilterMenuAction(
+                {
+                    title:"■全部チェック",optionId:OPT_SELECT_ALL_ITEMS,
+                    action:function act(ev) {
+                        selectionModel.selectAll();
+                        selectionModel.updateSelectionFromModel();
+                        updateTableStatusElement();
+                        return true;
+                    },
+                    isSelected:function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_ALL_ITEMS);
+                    }}),
+            new AutofilterMenuAction(
+                {
+                    title:"□全部クリア",optionId:OPT_CLEAR_ALL_ITEMS,
+                    action:function act(ev) {
+                        selectionModel.clearAll();
+                        selectionModel.updateSelectionFromModel();
+                        updateTableStatusElement();
+                        return true;
+                    },
+                    isSelected:function isSelected() {
+                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_ALL_ITEMS);
+                    }})];
+        return actions;
+    }
+    
+    //#====(ポップアップ関係)========================================
+
+    var popupManager = new function PopupManager() {
+        
+        var currentTimeoutId = null;
+        var popupTime = 500;//msec
+        var currentMousePos = {x:0,y:0};
+        var popupElm = null;
+        
+        var popupStates ={
+            normal: {
+                onTRMouseOut: function(ev,taskId) {
+                    hidePopup();
+                },
+                onTRMouseOver: function(ev,taskId) {
+                    currentMousePos.x = ev.clientX;
+                    currentMousePos.y = ev.clientY;
+                    if (taskId) {
+                        showPopup(taskId);
+                    }
+                },
+                onTableMouseOut: function(ev,taskId) {
+                    hidePopup();
+                }
+            },
+            hide: {
+                onTRMouseOut: function(ev,taskId) {
+                    hidePopup();
+                },
+                onTRMouseOver: function(ev,taskId) {
+                    hidePopup();
+                },
+                onTableMouseOut: function(ev,taskId) {
+                    hidePopup();
+                }
+            }
+        };
+        
+        this.enable = function() {
+            currentPopupState = popupStates.normal;
+        };
+        this.disable = function() {
+            currentPopupState = popupStates.hide;
+        };
+        
+        var currentPopupState = popupStates.hide;
+
+        tableElm.addEventListener(
+            "mouseout",
+            function(ev) {
+                var taskId = ev.target.parentNode.getAttribute("taskId");
+                var targetTagName = ev.target.tagName.toLowerCase();
+                if (targetTagName == "td") {
+                    currentPopupState.onTRMouseOut(ev,taskId);
+                } else if (targetTagName == "tbody") {
+                    currentPopupState.onTableMouseOut(ev,taskId);
+                }
+            },false);
+        
+        tableElm.addEventListener(
+            "mouseover",
+            function(ev) {
+                var taskId = ev.target.parentNode.getAttribute("taskId");
+                var targetTagName = ev.target.tagName.toLowerCase();
+                if (targetTagName == "td") {
+                    currentPopupState.onTRMouseOver(ev,taskId);
+                }
+            },false);
+        
+        function showPopup(taskId) {
+            if (!tableState.canShowPopup()) {
+                //他の機能が動作中のときは出さない
+                return;
+            }
+            var task = getTaskById(taskId);
+            //前準備
+            if (currentTimeoutId) {
+                clearTimeout(currentTimeoutId);
+                currentTimeoutId = null;
+            }
+            if (popupElm) {
+                document.body.removeChild(popupElm);
+            }
+            //Popupの外枠
+            popupElm = E("div",{id: "popup-taskview"});
+            var pos = cumulativeOffset(tbodyElm);
+            var size = {w: tbodyElm.offsetWidth, h: tbodyElm.offsetHeight};
+            size.innerWidth = size.w * 0.45;
+            size.space = size.w * 0.04;
+            
+            // 内容つくる ### taskの形に依存!!
+            popupElm.appendChild(E("h4",{textContent:task.keyName+" : "+task.summary}));
+            var descElm = E("div",{className:"loom"});
+            descElm.innerHTML = task.getDescriptionHTML();
+            popupElm.appendChild(descElm);
+            // コメント追加
+            function addComments() {
+                popupElm.appendChild(E("hr"));
+                if (!task.comments || task.comments.length == 0) {
+                    popupElm.appendChild(E("div",{className:"loom",textContent:"No comments:"}));
+                    return popupElm;
+                }
+                var commentsElm = E("div",{className:"loom"});
+                task.comments.forEach(
+                    function(item,index){
+                        commentsElm.appendChild(
+                            E("div",{},[
+                                  E("h5",{textContent:item.created_user.name+" | "+formatDate(item.created_on)}),
+                                  TXT(item.content)
+                              ]));
+                    });
+                popupElm.appendChild(commentsElm);
+                return commentsElm;
+            }
+            if (task.comments) {
+                addComments();
+            } else {
+                currentTimeoutId = setTimeout(
+                    function(){
+                        BacklogAPI.retrieveComments(
+                            taskId,function(list) {
+                                task.comments = list;
+                                var ce = addComments();
+                                adjustPosition();
+                                ce.focus();
+                            });
+                    },600);
+            }
+            
+            // 位置計算
+            if (currentMousePos.x > clientWidth/2) {
+                popupElm.style.left = (pos[0] + size.space)+"px";
+            } else {
+                popupElm.style.left = (pos[0] + size.w - size.innerWidth - size.space)+"px";
+            }
+            if (currentMousePos.y > clientHeight/2) {
+                popupElm.style.top  = (pos[1]+10)+"px";
+            } else {
+                popupElm.style.top = (pos[1] + size.h*0.6)+"px";
+            }
+            popupElm.style.width = size.innerWidth+"px";
+            
+            // 表示
+            document.body.appendChild(popupElm);
+            adjustPosition();
+
+            function adjustPosition() {
+                var ch = popupElm.offsetHeight;
+                if (currentMousePos.y < clientHeight/2 && ch > size.h/2) {
+                    popupElm.style.top = (pos[1] + size.h - size.h*0.65)+"px";
+                    popupElm.style.height = size.h*0.6+"px";
+                }
+            }
+        }
+        
+        function hidePopup() {
+            if (currentTimeoutId) {
+                clearTimeout(currentTimeoutId);
+            }
+            currentTimeoutId = setTimeout(
+                function() {
+                    if (popupElm) {
+                        document.body.removeChild(popupElm);
+                        popupElm = null;
+                    }
+                    currentTimeoutId = null;
+                },500);
+        }
+    }; //popup
+
+    afTable.setPopupEnable = function(b) {
+        if (b) popupManager.enable();
+        else popupManager.disable();
+    };
+    
+    //==== go ahead
+
+    afTable.updateTableView();
+}
+
+//==================================================
+//#  BacklogTask class
+
+function BacklogTask() {}
+BacklogTask.columnPairs = 
+    (function() {
+             var pairs = 
+<><![CDATA[
+         ID: id
+         プロジェクトID: projectId     ,プロジェクト名: projectName
+         キーID: keyId                 ,キー: keyName
+         種別ID: issueTypeId           ,種別: issueTypeName
+         カテゴリーID: componentId     ,カテゴリー名: componentName
+         バージョンID: versionId       ,バージョン: versionName
+         件名: summary                 ,詳細: description
+         状態ID: statusId              ,状態: statusName
+         優先度ID: priorityId          ,優先度: priorityName
+         マイルストーンID: milestoneId ,マイルストーン: milestoneName
+         完了理由ID: finishCauseId     ,完了理由: finishCauseName
+         担当者ID: assignerId          ,担当者: assignerName
+         作成者ID: createdUserId       ,作成者: createdUserName
+         作成日: created               ,更新日: updated
+         更新者ID: updatedUserId       ,更新者: updatedUserName
+         開始日: startDate             ,期限日: limitDate
+         予定時間: estimatedHours      ,実績時間: actualHours
+         コメント1: comment1           ,コメント2: comment2
+         コメント3: comment3           ,コメント4: comment4
+         コメント5: comment5           ,コメント6: comment6, コメント7: comment7
+     ]]></>.toString().split(/[\n,]/).map(
+         function(line) {
+             var pair = line.split(/:/);
+             if (!pair || pair.length < 2) return null;
+             return { name: pair[0].trim(), key: pair[1].trim() };
+         });
+         var ret = [];
+         pairs.forEach( function(item, index) {
+                            if (item) ret.push(item);
+               });
+         return ret;
+     })();
+
+BacklogTask.columnNames = BacklogTask.columnPairs.map(function(i) { return i.name; });
+BacklogTask.columnIds = BacklogTask.columnPairs.map(function(i) { return i.key; });
+
+// key -> name
+BacklogTask.cmap = (function(){
+    var map = {};
+    for(var i=0;i<BacklogTask.columnIds.length;i++) {
+        map[BacklogTask.columnIds[i]] = BacklogTask.columnNames[i];
+    }
+    return map;
+})();
+
+BacklogTask.prototype.toString = function() {
+    return "[TASK:"+this.id+"/"+this.summary+"]";
+};
+BacklogTask.prototype.getDescriptionHTML = function () {
+    return this.description.replace(/\n/g,"<br />");
+};
+BacklogTask.prototype.unserializeDesc = function() {
+    var desc = this.description;
+    var CC = BacklogTask.CUSTOM_COLUMNS.CC;
+    if (!desc || !desc.match(BacklogTask.CUSTOM_COLUMNS.START.tag)) {
+        for(var i in CC) { //空の値
+            this[CC[i].columnId] = ((CC[i].type == "number") ? 0 : "");
+        }
+        return;
+    }
+    for(var i in CC) {
+        var v = (desc.match(CC[i].rx)||[])[1];
+        if (!v) continue;
+        if (CC[i].type == "number" && v.match(/^[ 0-9]+$/)) {
+            v = parseInt(v,10);
+        }
+        this[CC[i].columnId] = v; 
+   }
+    var m = desc.match(new RegExp("^([\\s\\S]*)"+BacklogTask.CUSTOM_COLUMNS.START.tag));
+    if (m) {
+        this.description = m[1].trim();
+    }
+};
+BacklogTask.prototype.serializeDesc = function() {
+    var CC = BacklogTask.CUSTOM_COLUMNS.CC;
+    var list = [];
+    for(var i in CC) {
+        list.push(CC[i].tag+":"+this[CC[i].columnId]);
+    }
+    var text = this.description + "\n"+BacklogTask.CUSTOM_COLUMNS.START.tag+"\n"+list.join("\n");
+    this.description = text;
+};
+
+/**
+ * CSVのヘッダーから、順番→プロパティ名を変換する
+ * オブジェクトを返す
+ */
+BacklogTask.makeCSVMapper = function(header) {
+    var pairs = BacklogTask.columnPairs;
+    function searchByName(name) {
+        for(var i=0,j=pairs.length; i<j; i++) {
+            if (pairs[i].name == name) return pairs[i].key;
+        }
+        return null;
+    }
+    var cols = CSV.split(header);
+    var colmap = []; // 順番 -> columnId
+    cols.forEach( function(item, index) {
+                      colmap.push(searchByName(item));
+                  });
+    return colmap;
+};
+
+BacklogTask.initByCSV = function(line,mapper) {
+    var cols = CSV.split(line);
+    var t = new BacklogTask();
+    for(var i=0;i<mapper.length;i++) {
+        t[mapper[i]] = cols[i];
+    }
+    for(var i in t) {
+        if (i == "id" || i.match(/Id$/) || i.match(/Hours/)) {
+            t[i] = parseInt(t[i],10) || t[i];
+        }
+    }
+    t.description = t.description.replace(/\\\\r\\\n/g,"\n").replace(/\\\\r\\\\n/g,"\n");
+    t.unserializeDesc();
+    return t;
+};
+
+//独自カラムの定義
+BacklogTask.CUSTOM_COLUMNS = {
+    START: {tag:"%CUSTOM_COLUMNS"},
+    CC: {
+        //START_DATE : {tag:"%START_DATE",type:"text"},
+        //ESTIMATE   : {tag:"%ESTIMATE",  type:"number"}
+    }
+};
+
+//CUSTOM_COLUMNSの名前からCamelCaseの名前に変換する
+// Ex: START_DATE -> startDate
+BacklogTask.tag2id = function(tag) {
+    var words = tag.substring(1).split(/_/);
+    words[0] = words[0].toLowerCase();
+    if (words.length == 1) return words[0];
+    for(var i=1;i<words.length;i++) {
+        words[i] = words[i][0]+words[i].substring(1).toLowerCase();
+    }
+    return words.join("");
+};
+
+//独自カラムをパースするのに必要なオブジェクトを用意
+// TAGSに ["START_DATE", "ESTIMATE"]
+// もとのオブジェクトにパース用のrx、カラムID用のcolumnIdを用意
+BacklogTask.TAGS = 
+    (function() {
+         var ret = [];
+         var CC = BacklogTask.CUSTOM_COLUMNS.CC;
+         for(var i in CC) {
+             ret.push(CC[i].tag);
+             CC[i].rx = new RegExp(CC[i].tag+":(.*)");
+             CC[i].columnId = BacklogTask.tag2id(CC[i].tag);
+         }
+     })();
+
+
+//==================================================
+//#  Backlog HTML Utilities
+
+var BacklogHTML = {};
+
+BacklogHTML.getCSVURL = function getCSVURL() {
+    var url = location.href.match(/^https:\/\/[^/]+/)+"/csvExportIssue/Backlog-Issues-autofilter.csv";
+    var form = $("exportForm");
+    var elements = form.elements;
+    var queryComponents = [];
+    for(var i=0, j=elements.length; i<j; i++) {
+        queryComponents.push(serialize(elements[i]));
+    }
+    return url+"?"+queryComponents.join("&");
+    
+    function serialize(element) {
+        if (element.type == "select") {
+            return serializeSelect(element);
+        } else {
+            var key = element.name;
+            var value = element.value;
+            return encodeURIComponent(key)+"="+encodeURIComponent(value);
+        }
+    }
+    function serializeSelect(select) {
+        var value = [];
+        var key = encodeURIComponent(select.name);
+        for (var i = 0; i < element.length; i++) {
+            var opt = element.options[i];
+            if (opt.selected) {
+                var t = opt.value || opt.text;
+                value.push(key+"="+encodeURIComponent(t));
+            }
+        }
+        return value.join("&");
+    }
+}
+
+BacklogHTML.getAPIURL = function getAPIURL() {
+    var href = $('navi-home').href;
+    var m = href.match(/^(.*)\/projects/);
+    if (m) return m[1]+"/XML-RPC";
+    return null;
+}
+
+BacklogHTML.getProjectID = function getProjectID() {
+    var m = BacklogHTML.getCSVURL().match(/^.*projectId=([0-9]+)/);
+    if (m) return parseInt(m[1],10);
+    return null;
+}
+
+BacklogHTML.getProjectKey = function getProjectKey() {
+    var href = $('navi-home').href;
+    var m = href.match(/^.*projects\/([^?]*)/);
+    if (m) return m[1];
+    return null;
+}
+
+//==================================================
+//# Backlog API via XHR
+//     
+
+function XMLRPC() {} // もうちょっとXMLRPCらしくしたい
+XMLRPC.prototype = {
+    proxy: function(endPoint) {
+        this.endPoint = endPoint;
+        return this;
+    },
+    call: function(method, paramXML) {
+        var call =
+            <methodCall>
+                <methodName>{method}</methodName>
+                <params></params>
+            </methodCall> ;
+        call..params.appendChild(paramXML);
+        this.param = call.toString();
+        return this;
+    },
+    result: function(callback) {
+        var self = this;
+        GM_xmlhttpRequest(
+            {
+                method: 'post',
+                url: this.endPoint,
+                data: this.param,
+                onload: function(res) {
+                    //console.log("XHR OK : %o -> %o",self.param, res);
+                    var response = new XML(res.responseText.replace(/^<\?xml.*?\?>/, ''));
+                    callback(response);
+                },
+                onerror: function(res) {
+                    //console.log("XHR error : %o",res);
+                }
+            });
+        return this;
+    }
+};
+
+var BacklogAPI = {
+    url: (function () {
+              var href = $('navi-home').href;
+              var m = href.match(/^(.*)\/projects/);
+              if (m) return m[1]+"/XML-RPC";
+              return null;
+          })(),
+    STATUS: { // タスクの状態
+        WAITING   : 1,
+        WORKING   : 2,
+        DONE      : 3,
+        COMPLETED : 4 //完了からは処理中にしか戻せない？
+    },
+    STATUSES:[
+        {id:1, name:"未対応"},
+        {id:2, name:"処理中"},
+        {id:3, name:"処理済み"},
+        {id:4, name:"完了"}
+    ],
+    RESOLUTION: { // タスクを完了させた理由
+        DONE           : 0,
+        REMAIN         : 1,
+        INVALID        : 2,
+        DUPLICATED     : 3,
+        NOT_RECURRENCE : 4
+    },
+    RESOLUTIONS: [
+        {id: 0, name:"対応した"},
+        {id: 1, name:"対応しない"},
+        {id: 2, name:"無効"},
+        {id: 3, name:"重複"},
+        {id: 4, name:"再現せず"}
+    ],
+    PRIORITY: { // タスクの優先度
+        HIGH   : 2,
+        MIDDLE : 3,
+        LOW    : 4
+    },
+    PRIORITIES: [
+        {id: 2, name: "高"},
+        {id: 3, name: "中"},
+        {id: 4, name: "低"}
+    ],
+    _execAPI: function(method,paramXML,responseHandler) {
+        new XMLRPC().proxy(this.url).call(method,paramXML)
+            .result(responseHandler);
+    },
+    //<struct>をもらって、JSのオブジェクトに変換する
+    _struct2obj: function(xml) {
+        var _struct2obj = arguments.callee;
+        function parseValue(value) {
+            var v = value.child(0);
+            if (!v || v.length() == 0 || !v.name()) {
+                return value.toString();
+            }
+            switch (v.name().localName) {
+            case "i4":
+            case "int":
+                return parseInt(v.toString(),10);
+            case "string":
+                return v.toString();
+            case "struct":
+                return _struct2obj(v);
+            case "array":
+                var array = [];
+                for each (var i in v.data) {
+                    array.push(parseValue(i.value));
+                }
+                return array;
+                break;
+            default:
+                return v;//abandon
+            }
+        }
+        var ret = {};
+        for each (var member in xml.member) {
+            var key = member.name.toString();
+            ret[key] = parseValue(member.value);
+        }
+        return ret;
+    },
+    //JSのオブジェクトを<struct>に変換する
+    _obj2struct: function(obj) {
+        var ret = <struct></struct>;
+        for(var key in obj) {
+            var val = obj[key];
+            var tag = <member><name>{key}</name><value></value></member>;
+            if (typeof(val) == "number") {
+                tag.value.appendChild(<int>{val}</int>);
+            } else if (typeof(val) == "string" || val instanceof String) {
+                tag.value.appendChild(<string>{val}</string>);
+            } else if (val && typeof(val) == "object") {
+                tag.value.appendChild( arguments.callee(val) );
+            }
+            ret.appendChild(tag);
+        }
+        return ret;
+    },
+    _getObjects: function _getObjects(method,param,callback) {
+        var self = this;
+        this._execAPI(method,param,
+            function(response){
+                var list = [];
+                for each (var value in response..data.value) {
+                    list.push( self._struct2obj(value.struct) );
+                }
+                callback(list);
+            });
+    },
+    /**
+     * プロジェクトに参加しているユーザーの一覧をとって来る
+     * 
+     * >> 帰り値
+     * [ {id: (id), name: (name) }, ....  ]
+     */
+    retrieveUsers: function retrieveUsers(callback) {
+        var param = <param><value><int>{BacklogHTML.getProjectID()}</int></value></param> ;
+        this._getObjects("backlog.getUsers",param,callback);
+    },
+    /**
+     * 種別一覧をとって来る
+     * 
+     * >> 帰り値
+     * [ { id:, name:, color: "#xxyyzz" }, ... ]
+     */
+    retrieveIssueTypes: function retrieveIssueTypes(callback) {
+        var param = <param><value><int>{BacklogHTML.getProjectID()}</int></value></param> ;
+        this._getObjects("backlog.getIssueTypes",param,callback);
+    },
+    /**
+     * カテゴリ一覧をとって来る
+     * 
+     * >> 帰り値
+     * [ { id:, name: }, ... ]
+     */
+    retrieveComponents: function retrieveComponents(callback) {
+        var param = <param><value><int>{BacklogHTML.getProjectID()}</int></value></param> ;
+        this._getObjects("backlog.getComponents",param,callback);
+    },
+    /**
+     * バージョン一覧をとって来る
+     * 
+     * >> 帰り値
+     * [ {id:, name:, date:"YYYYMMDD" }, ... ]
+     */
+    retrieveVersions: function retrieveVersions(callback) {
+        var param = <param><value><int>{BacklogHTML.getProjectID()}</int></value></param> ;
+        this._getObjects("backlog.getVersions",param,callback);
+    },
+    /**
+     * 指定したタスクのコメントの一覧をとって来る
+     * 
+     * >> 帰り値
+     * [ {id:, content:, created_on:, updated_on:, created_user:{name:,id:} }, ... ]
+     */
+    retrieveComments: function retrieveComments(taskId,callback) {
+        var param = <param><value><int>{taskId}</int></value></param>;
+        this._getObjects("backlog.getComments",param,callback);
+    },
+    /**
+     * 必須(key,statusId)と変えたいものだけ入れる
+     * 
+     * >> change :
+     * key*         : EXT-1
+     * statusId*    : 状態ID
+     * assignerId   : 担当者ID
+     * resolutionId : 完了理由ID
+     * comment      : コメント
+     * 
+     * >> 帰り値はタスクオブジェクト
+     */
+    changeTaskStatus: function changeTaskStatus(change,callback) {
+        var self = this;
+        var param = <param><value></value></param>;
+        param.value.appendChild(this._obj2struct( change ));
+        this._execAPI(
+            "backlog.switchStatus",param,
+            function(response){
+                callback( self._struct2obj(response..param.value.struct) );
+            });
+    },
+    /**
+     * 必須(key)と変えたいものだけ入れる。
+     * 
+     * >> task :
+     * key*         : EXT-1
+     * summary      : 件名
+     * description  : 詳細
+     * due_date     : "YYYYMMDD"
+     * issueTypeId  : 分類  1:bug, 2:task, 3:wish, 4:etc
+     * componentId  : カテゴリID
+     * versionId    : マイルストーンID
+     * milestoneId  : マイルストーンID
+     * priorityId   : 優先度ID
+     * assignerId   : 担当者ユーザーID
+     * resolutionId : 完了理由ID
+     * comment      : コメント
+     * 
+     * >> 帰り値はタスクオブジェクト
+     */
+    changeTaskData: function changeTaskData(task,callback) {
+        var self = this;
+        var param = <param><value></value></param>;
+        param.value.appendChild(this._obj2struct( task ));
+        this._execAPI(
+            "backlog.updateIssue",param,
+            function(response){
+                callback( self._struct2obj(response..struct) );
+            });
+    }
+};
+
+//debug
+/*
+BacklogAPI.retrieveUsers(function(list){console.log("users: %o",list);});
+BacklogAPI.retrieveComments(204864,function(list){console.log("comments: %o",list);});
+BacklogAPI.retrieveComponents(function(list){console.log("components: %o",list);});
+BacklogAPI.retrieveVersions(function(list){console.log("versions: %o",list);});
+BacklogAPI.retrieveIssueTypes(function(list){console.log("issue types: %o",list);});
+BacklogAPI.changeTaskStatus(
+    {
+        key: "EXT-1",
+        statusId: BacklogAPI.STATUS.WAITING,
+        comment: "RPC TEST 御迷惑をお掛けします。"
+    },function(res) {
+        console.log(res);
+    });
+BacklogAPI.changeTaskData(
+    {
+        key: "EXTEST-1",
+        issueTypeId: 3,
+        comment: "RPC TEST 御迷惑をお掛けします。"
+    },function(res) {
+        console.log(res);
+    });
+*/
+
+
+//==================================================
+//# CSV Parser
+
+var CSV = {
+    quoteState: function quoteState(line,cols) {
+        var pss = line.indexOf('"');
+        var cur = pss+1,psqe;
+        while(true) {
+            psqe = line.indexOf('"',cur);
+            if (psqe == -1) throw "wrong format: can not find quote end... ["+line+"]";
+            if (line[psqe+1] == '"') {
+                //quote in quote
+                cur = psqe+2;
+            } else {
+                //quote end
+                var content = line.substring(pss+1,psqe);
+                content = content.replace("\\n","\n").replace('""','"');
+                cols.push(content);
+                break;
+            }
+        }
+        var ps = line.indexOf(",",psqe+1);
+        if (ps == -1) return "";//last column
+        return line.substring(ps+1);
+    },
+
+    columnState: function columnState(line,cols) {
+        var ps = line.indexOf(",");
+        if (ps == -1) {
+            cols.push(line);
+            return "";
+        }
+        cols.push(line.substring(0,ps));
+        return line.substring(ps+1);
+    },
+
+    next: function next(line) {
+        if (!line || !line.length) return null;
+        //find column head
+        var psq = line.indexOf("\"");
+        var psc = line.indexOf(",");
+        if (psc < 0) {
+            if (psq < 0) {
+                //last normal
+                return CSV.columnState;
+            } else {
+                //last quoted
+                return CSV.quoteState;
+            }
+        }
+        if (psq >= 0 && psc >= 0) {
+            if (psc < psq) {
+                //normal
+                return CSV.columnState;
+            } else {
+                //quoted
+                return CSV.quoteState;
+            }
+        } else if (psq >= 0) {
+            //quoted
+            return CSV.quoteState;
+        } else {
+            //normal
+            return CSV.columnState;
+        }
+    },
+
+    split: function split(line) {
+        var cols = [];
+        var state = CSV.next(line);
+        while(state) {
+            line = state(line,cols);
+            state = CSV.next(line);
+        }
+        return cols;
+    }
+};
+
+function formatDate(str) {
+    var ret = null;
+    if (str && str.length >= 8) {
+        ret = str.substring(0,4)+"/"+str.substring(4,6)+"/"+str.substring(6,8);
+    } else {
+        return str;
+    }
+    if (str.length >= 14) {
+        ret += " "+str.substring(8,10)+":"+str.substring(10,12)+":"+str.substring(12,14);
+    }
+    return ret;
+}
+
