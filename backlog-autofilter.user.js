@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-17 17:13:26 sakurai>
+// Time-stamp: <2011-06-18 00:02:36 sakurai>
 
 
 //==================================================
@@ -341,7 +341,6 @@ function addChangeViewButton() {
     parent.insertBefore(elm,parent.firstChild);
 }
 
-
 //==================================================
 //# 並行処理待ち
 // カスタム属性、バージョン一覧取ってきた後で buildTaskTable を実行する
@@ -645,9 +644,20 @@ function buildTaskTable() {
                 ]
             });
 		
+		// 複数選択リスト項目
+		var nameGetter = function(obj) { return obj.name; };
+		var multiListValues = {
+			versionName: BacklogAPI.VERSIONS.map(nameGetter),
+			milestoneName: BacklogAPI.VERSIONS.map(nameGetter)
+		};
+		
 		// カスタムフィールド設定追加
 		BacklogAPI.CUSTOM_FIELDS.forEach( function(item, index) {
 			BacklogTask.addCustomColumn(item.name,item.name,true);
+			// 複数リスト追加
+			if (item.type_id == 6) {
+				multiListValues[item.name] = item.items.map(nameGetter);
+			}
 		});
 
         //表示するカラム
@@ -667,6 +677,7 @@ function buildTaskTable() {
                 model.sortColumnId = sortMap.v(columnId);
                 model.dataTemplate = templateMap.v(columnId);
                 model.visible      = (defaultOffColumns.indexOf(columnId) == -1);
+				model.multiListValues = multiListValues[columnId];
                 
                 if (filterMap.v(columnId)) {
                     filterMap.v(columnId).forEach(
@@ -708,6 +719,7 @@ function TableColumnModel(_columnIds) {
         this.dataTemplate        = null;  // tdをレイアウトするときに使用するテンプレート
         
         this.visible             = true;  // このカラムを表示するかどうか
+		this.multiListValues     = null;  // 文字列のリスト→複数選択リスト項目なのでレイアウト変更したり、選択項目を付け加える
     }
     //public: カラムの表示用HTMLを返す
     ColumnModel.prototype.getListHTML = function(obj) {
@@ -716,7 +728,7 @@ function TableColumnModel(_columnIds) {
         } else {
             var data = obj[this.columnId];
             if  (data === undefined || data === null) return "";
-            return data;
+			return (this.multiListValues) ? data.replace(/,/g, "<br />") : data;
         }
     };
     //public: このカラムのカスタム選択項目を option_id で検索する。
@@ -730,7 +742,15 @@ function TableColumnModel(_columnIds) {
             });
         return ret;
     };
-    
+	//public: このカラムのデフォルトのフィルター用関数を返す
+	ColumnModel.prototype.getDefaultFilterFunction = function() {
+        // this.value はフィルターで選択された値
+		return (this.multiListValues) ? 
+			function(i) { return i.indexOf(this.value)>=0; } :
+		    function(i) { return i === this.value; };
+	};
+	//public: 
+
     columnIds.forEach(
         function(i,index) {
             columnModels[i] = new ColumnModel(i);
@@ -1709,8 +1729,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
            });
     
     //busy状態
-    function TSBusy() {
-    }
+    function TSBusy() {}
     extend(TSBusy.prototype, TSAbstract, { });
     
     var tableState = new TSNormal();
@@ -1895,9 +1914,11 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             var self = this;
             tableColumnModel.each(
                 function(columnId,columnModel) {
-                    self.columns[columnId].values = getColumnValues(columnId);
+                    self.columns[columnId].values = 
+						(columnModel.multiListValues) ? 
+						getColumnValuesMultiList(columnModel) : getColumnValues(columnId);
                 });
-            //重複を取り除いた一覧を返す
+            // 重複を取り除いた一覧を返す
             function getColumnValues(cid) {
                 var map = {}, list = [];
                 for(var i=0;i<_taskList.length;i++) {
@@ -1910,6 +1931,18 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                 list.sort();
                 return list;
             }
+			// 複数リストの場合は元になるリストの値も使う
+			function getColumnValuesMultiList(columnModel) {
+				var values = getColumnValues(columnModel.columnId);
+				var sample = values.join(" ");
+				columnModel.multiListValues.forEach( function(item, index) {
+					if (sample.indexOf(item) >= 0 && values.indexOf(item) < 0) {
+						values.push(item);
+					}
+				});
+				values.sort();
+				return values;
+			}
         },
         existsBlank: function(columnId) {
             var ret = false;
@@ -1934,21 +1967,24 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             return filteredList;
 
             function isVisibleTask(task) {
+				// 各カラムのフィルターが選択されているかどうかチェック
                 for(var j=0;j<columnIds.length;j++) {
                     var cid = columnIds[j];
                     var fv = this.columns[cid].filter;
                     if (!fv) continue;
                     if (!fv.test(task[cid])) {
-                        return false;
+                        return false; // フィルターで弾かれたら×
                     }
                 }
+				// 選択フィルターで弾かれていたら×
                 if (this.selectionFilter && !this.selectionFilter.test(task.id)) {
                     return false;
                 }
+				// 外部フィルター (isearch など) で弾かれていたら×
                 if (this.externalFilter && !this.externalFilter.test(task)) {
                     return false;
                 }
-                return true;
+                return true; // 生き残ったもの
             }
         },
         updateThs: function() { //TRのクラスを現在の状態にあわせる
@@ -2332,9 +2368,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             // フィルターで比較に使う値
             this.value = value;
             // 引数のオブジェクトを表示するかどうか。trueで表示。
-            this.test = function(i) {
-                return i === this.value;
-            };
+			this.test = tableColumnModel.getColumnModel(columnId).getDefaultFilterFunction();
         }
         // ステータス表示に表示するもの。
         this.title = title;
@@ -2494,6 +2528,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                         return (!fmodel.filter) && (sortModel.getIndex(columnId) == -1);
                     }
                 }));
+		// ソート
         [{title:"[ ↓昇順  ]",value:OPT_ASC}, {title:"[ ↑降順  ]",value:OPT_DESC}].forEach(
             function(item,index) {
                 actions.push(
@@ -2517,6 +2552,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                         }));
             });
 
+		// 空白以外
         if (filterModel.existsBlank(columnId)) {
             actions.push(
                 new AutofilterMenuAction(
@@ -2539,18 +2575,17 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                 var index = _index+1;
                 var title = (value == "") ? "[  空白  ]" : value;
                 actions.push(
-                    new AutofilterMenuAction(
-                        {
-                            columnId:columnId,value:value,
-                            title:title,optionId:index,
-                            action: function act(ev) {
-                                fmodel.filter = new ColumnFilter(columnId,index,value,title);
-                                sortModel.remove(columnId);
-                            },
-                            isSelected: function isSelected() {
-                                return fmodel.filter && fmodel.filter.optionId === index;
-                            }
-                        }));
+                    new AutofilterMenuAction({
+                        columnId:columnId,value:value,
+                        title:title,optionId:index,
+                        action: function act(ev) {
+                            fmodel.filter = new ColumnFilter(columnId,index,value,title);
+                            sortModel.remove(columnId);
+                        },
+                        isSelected: function isSelected() {
+                            return fmodel.filter && fmodel.filter.optionId === index;
+                        }
+                    }));
             });
 
         //   カスタム機能項目
@@ -3226,6 +3261,7 @@ var BacklogAPI = {
         var self = this;
         this._execAPI(method,param,
             function(response){
+				//console.log(response);
                 var list = [];
                 for each (var value in response.params.param.value.array.data.value) {
                     list.push( self._struct2obj(value.struct) );
