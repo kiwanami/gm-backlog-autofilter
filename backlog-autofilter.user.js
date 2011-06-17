@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-18 00:02:36 sakurai>
+// Time-stamp: <2011-06-18 00:39:37 sakurai>
 
 
 //==================================================
@@ -655,7 +655,7 @@ function buildTaskTable() {
 		BacklogAPI.CUSTOM_FIELDS.forEach( function(item, index) {
 			BacklogTask.addCustomColumn(item.name,item.name,true);
 			// 複数リスト追加
-			if (item.type_id == 6) {
+			if (item.type_id == BacklogAPI.CUSTOM_FIELD_TYPES.MULTI_SELECT) {
 				multiListValues[item.name] = item.items.map(nameGetter);
 			}
 		});
@@ -1376,16 +1376,15 @@ function execActionChangeLimit(event,components,afTable) {
     dialog.show();
 
     if (unsafeWindow.Calendar) {
-        unsafeWindow.Calendar.setup(
-            {
-		        inputField	: "limitDate",
-		        ifFormat	: "%Y/%m/%d",
-		        showsTime	: false,
-	            button      : "limitDateCalendar",
-		        align		: "Bl",
-		        singleClick	: true,
-		        weekNumbers : false
-	        });
+        unsafeWindow.Calendar.setup({
+		    inputField	: "limitDate",
+		    ifFormat	: "%Y/%m/%d",
+		    showsTime	: false,
+	        button      : "limitDateCalendar",
+		    align		: "Bl",
+		    singleClick	: true,
+		    weekNumbers : false
+	    });
     }
 }
 
@@ -3206,6 +3205,16 @@ var BacklogAPI = {
         {id: 3, name: "中"},
         {id: 4, name: "低"}
     ],
+	CUSTOM_FIELD_TYPES: {
+		TEXT:			 1,
+		AREA:			 2,
+		NUMBER:			 3,
+		DATE:			 4,
+		SELECT:			 5,
+		MULTI_SELECT:	 6,
+		CHECKBOX:		 7,
+		RADIOBOX:		 8
+	},
     _execAPI: function(method,paramXML,responseHandler) {
         new XMLRPC().proxy(this.url).call(method,paramXML)
             .result(responseHandler);
