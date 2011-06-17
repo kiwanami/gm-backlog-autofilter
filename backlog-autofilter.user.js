@@ -11,8 +11,9 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2009-11-17 16:34:50 sakurai>
+// Time-stamp: <2011-06-17 17:13:26 sakurai>
 
+
 //==================================================
 //# 自動更新機能
 // ref: http://blog.fulltext-search.biz/archives/2008/08/update-checker-4-greasemonkey.html
@@ -36,6 +37,7 @@ if (typeof UpdateChecker != "undefined") {
     }
 }
 
+
 //==================================================
 //# XPath
 
@@ -72,6 +74,7 @@ function $$(tagName,cssClass) {
     return $X("//"+tagName+"[@class='"+cssClass+"']");
 }
 
+
 //==================================================
 //# CSS Style
 
@@ -163,6 +166,7 @@ scripts.push( E("link",
 var head = document.getElementsByTagName('head')[0];
 scripts.forEach(function(item,index) { head.appendChild(item); });
 
+
 //==================================================
 //# 基本改造
 
@@ -232,6 +236,7 @@ function E(tag,attrs,children) {
 function TXT(content) {
     return document.createTextNode(content);
 }
+
 
 function cumulativeOffset(element) { // copied from prototype.js 1.5.0
     var valueT = 0, valueL = 0;
@@ -313,6 +318,7 @@ var OPT_SELECT_ALL_ITEMS       = 4;
 var OPT_CLEAR_SHOWEN_ITEMS     = 5;
 var OPT_CLEAR_ALL_ITEMS        = 6;
 
+
 //==================================================
 //# 処理開始用ボタン作成
 
@@ -324,16 +330,55 @@ function addChangeViewButton() {
         i.parentNode.title = t;
         i.innerHTML = "";
     });
-    var handler = buildTaskTable;
+    var handler = waitForPreTasks;
     var elm = E("a",{href:"javascript:void(0)", textContent: "[AF]"});
     var parent = $$("td","ico")[0];
     elm.addEventListener("click",
                          function(ev) {
                              handler && handler();
                          },false);
+    setTimeout(startPreTasks, 1);
     parent.insertBefore(elm,parent.firstChild);
 }
 
+
+//==================================================
+//# 並行処理待ち
+// カスタム属性、バージョン一覧取ってきた後で buildTaskTable を実行する
+
+var deferredTask = {
+    preTasksNum: -1,
+    nextTask: null,
+    taskFinished: function() {
+        this.preTasksNum--;
+        if (this.preTasksNum == 0 && this.nextTask) {
+            this.nextTask();
+            this.nextTask = null;
+        }
+    }
+};
+
+function waitForPreTasks() {
+    if (deferredTask.preTasksNum == 0) {
+        buildTaskTable();
+    } else {
+        deferredTask.nextTask = buildTaskTable;
+    }
+}
+
+function startPreTasks() {
+    deferredTask.preTasksNum = 2;
+    BacklogAPI.retrieveVersions(function(versions) {
+        BacklogAPI.VERSIONS = versions;
+        deferredTask.taskFinished();
+    });
+    BacklogAPI.retrieveCustomFields(function(fields) {
+        BacklogAPI.CUSTOM_FIELDS = fields;                         
+        deferredTask.taskFinished();
+    });
+}
+
+
 //==================================================
 //# Autofilter Table の構築の前準備とアクション用GUI作成
 
@@ -599,9 +644,14 @@ function buildTaskTable() {
                     new CustomFilterOption("完了以外", -10, function(i) { return i != "完了"; })
                 ]
             });
+		
+		// カスタムフィールド設定追加
+		BacklogAPI.CUSTOM_FIELDS.forEach( function(item, index) {
+			BacklogTask.addCustomColumn(item.name,item.name,true);
+		});
 
         //表示するカラム
-        var tableColumnModel = new TableColumnModel("keyName issueTypeName componentName summary priorityName versionName milestoneName created startDate limitDate estimatedHours actualHours updated createdUserName assignerName statusName".split(" "));
+        var tableColumnModel = new TableColumnModel(BacklogTask.displayColumnIds);
         //デフォルトで表示しないカラム
         var defaultOffColumns = "startDate estimatedHours actualHours".split(" ");
 
@@ -630,6 +680,7 @@ function buildTaskTable() {
     }
 }
 
+
 //==================================================
 //# Autofilterの部品
 
@@ -746,6 +797,7 @@ function CustomFilterOption(filterTitle,optionId,testFunc) {
     this.testFunc = testFunc;
 }
 
+
 //# 表示からカラム設定用の簡易ダイアログ表示
 function showTableSettingMenu(event, components, afTable) {
     var self = this;
@@ -828,6 +880,7 @@ function getLastSetting() {
     return eval(GM_getValue(serializeKey(), null));
 }
 
+
 //==================================================
 //#  まとめ処理
 
@@ -1493,6 +1546,7 @@ function exportTableTSV(components, afTable) {
     }
 }
 
+
 //==================================================
 //#  Wait dialog
 
@@ -1558,6 +1612,7 @@ WaitDialog.prototype.close = function() {
     document.body.removeChild(this.dialogElm);
 }
 
+
 //==================================================
 //#  Autofilter Table class
 
@@ -1587,6 +1642,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     var tableElm = _tableElm;   // このautofilterが取り付くテーブル
     var theadElm, tbodyElm;     // ヘッダーと表の本体
 
+
     //#=====(状態管理)========================================
     // 参照：THメニュー、Popup
     var TSAbstract = {
@@ -1659,6 +1715,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     
     var tableState = new TSNormal();
 
+
     //#=====(テーブル初期化)========================================
     function setupTable() {
         if (tableElm.className.indexOf("autofilter") == -1) {
@@ -1695,6 +1752,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     }
     setupTable();
 
+
     //#=====(ソート管理)========================================
     var sortModel = {
         keys:[], //sort用に {key:columnId,way:OPT_ASC,DESC} のオブジェクトを入れる
@@ -1757,6 +1815,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         }
     };
 
+
     //#=====(カラム、フィルター管理)========================================
     var filterModel = {
         columns: (function() {
@@ -1936,6 +1995,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     };
     filterModel.updateColumnValues(taskList);
     
+
     //#=====(選択状態管理)========================================
     var selectionModel = {
         selectedTasks:{}, //taskListのidをキーにしたオブジェクト
@@ -2078,6 +2138,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
 
     var updateListener = []; // このaftableの情報が更新されたときに呼ばれるイベントリスナー達
 
+
     //# AFTable public functions
     
     //public: 更新リスナー追加
@@ -2255,6 +2316,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         fireUpdateEvent(); //ステータスが変わるような時はupdateされてると仮定
     }
     
+
     //==================================================
     //# Autofilterのメニュー関係
 
@@ -2602,6 +2664,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         return actions;
     }
     
+
     //#====(ポップアップ関係)========================================
 
     var popupManager = new function PopupManager() {
@@ -2782,10 +2845,13 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     afTable.updateTableView();
 }
 
+
 //==================================================
 //#  BacklogTask class
 
 function BacklogTask() {}
+
+// {key: , name: } の配列
 BacklogTask.columnPairs = 
     (function() {
              var pairs = 
@@ -2823,8 +2889,11 @@ BacklogTask.columnPairs =
          return ret;
      })();
 
+// columnPairs から取ってくる
 BacklogTask.columnNames = BacklogTask.columnPairs.map(function(i) { return i.name; });
 BacklogTask.columnIds = BacklogTask.columnPairs.map(function(i) { return i.key; });
+// columnPairs からこのアプリが表示して意味がありそうなもの
+BacklogTask.displayColumnIds = "keyName issueTypeName componentName summary priorityName versionName milestoneName created startDate limitDate estimatedHours actualHours updated createdUserName assignerName statusName".split(" ");
 
 // key -> name
 BacklogTask.cmap = (function(){
@@ -2834,6 +2903,16 @@ BacklogTask.cmap = (function(){
     }
     return map;
 })();
+
+// columnPairs, columnIds, columnNames, cmap の整合性を取るために、
+// 上の基本フィールド以外のカスタムフィールドはこの関数を使って追加する。
+BacklogTask.addCustomColumn = function(id, name, displayFlag) {
+	BacklogTask.columnPairs.push( { key:id, name: name} );
+	BacklogTask.columnIds.push(id);
+	BacklogTask.columnNames.push(name);
+	BacklogTask.cmap[id] = name;
+	if (displayFlag) BacklogTask.displayColumnIds.push(id);
+}
 
 BacklogTask.prototype.toString = function() {
     return "[TASK:"+this.id+"/"+this.summary+"]";
@@ -2945,6 +3024,7 @@ BacklogTask.TAGS =
      })();
 
 
+
 //==================================================
 //#  Backlog HTML Utilities
 
@@ -3003,6 +3083,7 @@ BacklogHTML.getProjectKey = function getProjectKey() {
     return null;
 }
 
+
 //==================================================
 //# Backlog API via XHR
 //     
@@ -3108,8 +3189,8 @@ var BacklogAPI = {
                 return _struct2obj(v);
             case "array":
                 var array = [];
-                for each (var i in v.data) {
-                    array.push(parseValue(i.value));
+                for each (var i in v.data.value) {
+                    array.push(parseValue(i));
                 }
                 return array;
                 break;
@@ -3146,7 +3227,7 @@ var BacklogAPI = {
         this._execAPI(method,param,
             function(response){
                 var list = [];
-                for each (var value in response..data.value) {
+                for each (var value in response.params.param.value.array.data.value) {
                     list.push( self._struct2obj(value.struct) );
                 }
                 callback(list);
@@ -3203,6 +3284,16 @@ var BacklogAPI = {
         this._getObjects("backlog.getComments",param,callback);
     },
     /**
+     * カスタムフィールド一覧を取ってくる
+     * 
+     * >> 帰り値
+     * [ {id:, content:, created_on:, updated_on:, created_user:{name:,id:} }, ... ]
+     */
+    retrieveCustomFields: function retrieveCustomFields(callback) {
+        var param = <param><value><int>{BacklogHTML.getProjectID()}</int></value></param>;
+        this._getObjects("backlog.getCustomFields",param,callback);
+    },
+    /**
      * 必須(key,statusId)と変えたいものだけ入れる
      * 
      * >> change :
@@ -3221,7 +3312,7 @@ var BacklogAPI = {
         this._execAPI(
             "backlog.switchStatus",param,
             function(response){
-                callback( self._struct2obj(response..param.value.struct) );
+                callback( self._struct2obj(response.params.param.value.struct) );
             });
     },
     /**
@@ -3280,7 +3371,7 @@ BacklogAPI.changeTaskData(
     });
 */
 
-
+
 //==================================================
 //# CSV Parser
 
@@ -3372,3 +3463,6 @@ function formatDate(str) {
     return ret;
 }
 
+// export
+
+// unsafeWindow.BacklogAPI = BacklogAPI;
