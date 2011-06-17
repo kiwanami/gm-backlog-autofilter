@@ -2398,12 +2398,16 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     
     function MenuManager(thElm) {
         var self = this;
+		var menuMargin = 35;
         var menuElm = $('column-menu');
         if (menuElm) {
             document.body.removeChild(menuElm);
         }
         menuElm = E("div",{id: "column-menu"});
         var pos = cumulativeOffset(thElm);
+		if ( (pos[0]+thElm.offsetWidth+menuMargin) > tableElm.offsetWidth ) {
+			pos[0] = pos[0] - menuMargin - 5;
+		}
         menuElm.style.left = pos[0]+"px";
         menuElm.style.top  = (pos[1]+thElm.offsetHeight+1)+"px";
         var selectElm = E("select",{size:10});
