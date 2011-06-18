@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-18 13:11:36 sakurai>
+// Time-stamp: <2011-06-18 23:48:33 sakurai>
 
 
 //==================================================
@@ -80,11 +80,13 @@ function $$(tagName,cssClass) {
 
 var clientWidth  = window.innerWidth;
 var clientHeight = window.innerHeight;
+var tfootHeight = 28;
 
 function addStyle(css) { 
     var csst = css
         .replace(/;/g,' !important;')
-        .replace(/%HEIGHT%/, ""+(clientHeight*0.8));
+        .replace(/%HEIGHT%/, ""+(clientHeight*0.8))
+        .replace(/%TF-HEIGHT%/, ""+tfootHeight);
     GM_addStyle(csst);
 }
 
@@ -95,9 +97,12 @@ addStyle(<><![CDATA[
     table.autofilter tbody { overflow-x:hidden; overflow-y:scroll; height:%HEIGHT%px; background-color:white; }
     
     /* Autofilter の th 表示調整用 */
-    table.autofilter th { cursor:pointer; }
+    table.autofilter > thead > th { cursor:pointer; }
     th.autofilter-filter { background-color: #81B419; }
     th.autofilter-sort { background-color: #D3E0EF; }
+    table.autofilter > tfoot { overflow-y:scroll; overflow-x:hidden; height:%TF-HEIGHT%px; }
+	table.autofilter > tfoot.wide { overflow-y:scroll; overflow-x:hidden; height:auto; }
+    table.autofilter > tfoot > th { vertical-align: top; background-color: #F9F8E3; overflow-x:hidden; }
     /* ff3で色が付かない？ */
     table.autofilter tr.odd td { background-color:#f0f0f0; }
     /* 行が光る */
@@ -560,6 +565,15 @@ function buildTaskTable() {
         actionPanel.insertBefore(
             E("label",{}, [popup,TXT(":popup ")]),
             actionPanel.firstChild);
+
+        var report = E("input",{type:"checkbox",id:"report-switch"});
+        report.addEventListener(
+            "change",function(ev) {
+                afTable.setReportEnable(report.checked);
+            },false);
+        actionPanel.insertBefore(
+            E("label",{}, [report,TXT(":report ")]),
+            actionPanel.firstChild);
         
         components.summaryPanel.appendChild(E("span",{textContent: "一括変更:"}));
         [ {text:"状態",      action:execActionChangeStatus},
@@ -604,8 +618,10 @@ function buildTaskTable() {
         }
     }
 
+
     function buildTableColumnModel() {
         //# 各カラムごとの違いなどを構築
+		// ※ BacklogTask 定義も参照
         var templateMap = new DHash(
                 { //表示用のテンプレート
                     keyName: function() {
@@ -672,6 +688,7 @@ function buildTaskTable() {
                 var className  = classMap.v(columnId);//レイアウト用
 
                 model.thId         = "th-"+pClassName;
+                model.tfId         = "tf-"+pClassName;
                 model.thClassName  = pClassName;
                 model.tdClassName  = className+" "+pClassName;
                 model.columnName   = BacklogTask.cmap[columnId];
@@ -679,6 +696,7 @@ function buildTaskTable() {
                 model.dataTemplate = templateMap.v(columnId);
                 model.visible      = (defaultOffColumns.indexOf(columnId) == -1);
 				model.multiListValues = multiListValues[columnId];
+				model.reportStrategy = BacklogTask.reportStrategies[columnId];
                 
                 if (filterMap.v(columnId)) {
                     filterMap.v(columnId).forEach(
@@ -711,7 +729,8 @@ function TableColumnModel(_columnIds) {
         this.columnId            = _columnId; // カラム識別用の内部ID
         this.columnName          = _columnId; // thに表示するタイトル
         
-        this.thId                = _columnId; // thに付加するHTMLのID
+        this.thId                = _columnId; // th(thead)に付加するHTMLのID
+        this.tfId                = _columnId; // th(tfoot)に付加するHTMLのID
         this.tdClassName         = _columnId; // td用のクラス
         this.thClassName         = _columnId; // th用のクラス
         
@@ -721,6 +740,7 @@ function TableColumnModel(_columnIds) {
         
         this.visible             = true;  // このカラムを表示するかどうか
 		this.multiListValues     = null;  // 文字列のリスト→複数選択リスト項目なのでレイアウト変更したり、選択項目を付け加える
+		this.reportStrategy     = null;  // 簡易統計用関数。 {map: func, reduce: func} のオブジェクト。 null なら簡易統計は何もしない。
     }
     //public: カラムの表示用HTMLを返す
     ColumnModel.prototype.getListHTML = function(obj) {
@@ -750,7 +770,6 @@ function TableColumnModel(_columnIds) {
 			function(i) { return i.indexOf(this.value)>=0; } :
 		    function(i) { return i === this.value; };
 	};
-	//public: 
 
     columnIds.forEach(
         function(i,index) {
@@ -1661,6 +1680,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     var statusElm = _statusElm; // 現在の検索条件などを表示する領域
     var tableElm = _tableElm;   // このautofilterが取り付くテーブル
     var theadElm, tbodyElm;     // ヘッダーと表の本体
+	var tfootElm;  // 簡易集計用
 
 
     //#=====(状態管理)========================================
@@ -1741,33 +1761,42 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             tableElm.className += " autofilter";
         }
         tableElm.innerHTML = "";
-        var ths = [];
+        var ths = [], tfs = [];
 
         var sel = E("th",{id:"th-selection",className:"p_selection",textContent:"■"});
         sel.addEventListener("click",function(ev) {
-                                 tableState.onClickTHSelection(ev);
-                             },false);
+            tableState.onClickTHSelection(ev);
+        },false);
         ths.push(sel);
+		tfs.push(E("th"));
 
-        tableColumnModel.each(
-            function(columnId,model) {
-                var th = E("th",
-                           {className: model.thClassName,
-                            nowrap: "nowrap",
-                            id: model.thId
-                           });
-                th.textContent = model.columnName;
-                th.addEventListener("click",function(ev) {
-                                        tableState.onClickTHColumn(ev,columnId);
-                },false);
-                ths.push(th);
-            });
+        tableColumnModel.each(function(columnId,model) {
+            var th = E("th",
+                       {className: model.thClassName,
+                        nowrap: "nowrap",
+                        id: model.thId
+                       });
+            th.textContent = model.columnName;
+            th.addEventListener("click",function(ev) {
+                tableState.onClickTHColumn(ev,columnId);
+            },false);
+            ths.push(th);
+			var tf = E("th",{className: model.thClassName, id: model.tfId});
+			tfs.push(tf);
+        });
 
         ths.push(E("th",{className:"autofilter-spacer"}));
+		tfs.push(E("th"));
+
         theadElm = E("thead",{},ths);
         tableElm.appendChild(theadElm);
         tbodyElm = E("tbody",{});
         tableElm.appendChild(tbodyElm);
+		tfootElm = E("tfoot",{},tfs);
+		tableElm.appendChild(tfootElm);
+		tfootElm.addEventListener("click", function(ev) {
+			reportManager.onClickRow();
+		},false);
     }
     setupTable();
 
@@ -1845,7 +1874,8 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                                   values: [], //カラム内の値一覧（AF用）
                                   filter: null, //AF用フィルター候補
                                   //nullですべて, filter用インタフェース(test,title)
-                                  th: $(columnModel.thId)
+                                  th: $(columnModel.thId),
+								  tf: $(columnModel.tfId)
                               };
                           });
                       return model;
@@ -1998,8 +2028,10 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                          (sortModel.getIndex(columnId) != -1) ? "autofilter-sort" : ""].join(" ");
                     if (columnModel.visible) {
                         column.th.style.display = "";
+                        column.tf.style.display = "";
                     } else {
                         column.th.style.display = "none";
+                        column.tf.style.display = "none";
                     }
                 });
             
@@ -2330,6 +2362,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         updateTableStatusElement();
         filterModel.updateThs();
         selectionModel.updateSelectionFromModel();
+		reportManager.updateReports(sortedTaskList);
     };
 
     //テーブルのステータスを更新する時（再描画、選択変更）に呼ばれる
@@ -2709,6 +2742,64 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     }
     
 
+    //#====(集計関係)================================================
+
+	var reportManager = new function ReportManager() {
+		this.active = false;
+
+		this.updateReports = function(tasklist) {
+			if (!this.active) return;
+			var models = [], data = [], ids = []; // 順番は維持
+			tableColumnModel.each(function( columnId, model ) {
+				if (model.reportStrategy) {
+					ids.push(columnId);
+					models.push(model);
+					data.push([]);
+				}});
+			var mnum = models.length;
+			for (var i = 0; i < tasklist.length; i++) {
+				var task = tasklist[i];
+				for (var j = 0; j < mnum; j++) {
+					data[j].push( models[j].reportStrategy.map(ids[j], task) );
+				}
+			}
+			for (var j = 0; j < mnum; j++) {
+				var result = models[j].reportStrategy.reduce( data[j] );
+				var elm = $(models[j].tfId);
+				elm.innerHTML = result.replace(/\n/g,"<br />");
+				elm.title = result.replace(/\n/g," / ");
+			}
+		};
+		
+		this.enable = function() {
+			tfootElm.style.display = "table-footer-group";
+			this.active = true;
+			this.updateReports(sortModel.sort(filterModel.filter(taskList)));
+		};
+		this.disable = function() {
+			tfootElm.style.display = "none";
+			this.active = false;
+		};
+
+		this.wide = false; // クリックしたら広げる
+		this.onClickRow = function() {
+			this.wide = !this.wide;
+			if (this.wide) {
+				tfootElm.className = "wide";
+			} else {
+				tfootElm.className = "";
+			}
+		};
+	};
+
+	reportManager.disable();
+
+    afTable.setReportEnable = function(b) {
+        if (b) reportManager.enable();
+        else reportManager.disable();
+    };
+
+
     //#====(ポップアップ関係)========================================
 
     var popupManager = new function PopupManager() {
@@ -2893,6 +2984,9 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
 //==================================================
 //#  BacklogTask class
 
+// Backlog のタスクについてのドメイン知識はこのあたりに書く
+// （逆に GUI に近い知識は buildTableColumnModel 関数に書く）
+
 function BacklogTask() {}
 
 // {key: , name: } の配列
@@ -2948,8 +3042,10 @@ BacklogTask.cmap = (function(){
     return map;
 })();
 
-// columnPairs, columnIds, columnNames, cmap, displayColumnIds の整合性を取るために、
-// 上の基本フィールド以外のカスタムフィールドはこの関数を使って追加する。
+/**
+ * columnPairs, columnIds, columnNames, cmap, displayColumnIds の整合性を取るために、
+ * 基本フィールド以外のカスタムフィールドはこの関数を使って追加する。
+ */
 BacklogTask.addCustomColumn = function(id, name, displayFlag) {
 	BacklogTask.columnPairs.push( { key:id, name: name} );
 	BacklogTask.columnIds.push(id);
@@ -2998,6 +3094,65 @@ BacklogTask.initByCSV = function(line,mapper) {
     }
     t.description = t.description.replace(/\\\\r\\\n/g,"\n").replace(/\\\\r\\\\n/g,"\n");
     return t;
+};
+
+// 簡易統計の定義
+
+BacklogTask.reportStrategies =	new function() {
+	var sumStrategy = {
+		map: function(key, task) {
+			var h = task[key];
+			return (h === null || h === undefined || h == "") ? null : parseInt(h,10);
+		},
+		reduce: function(values) {
+			var sum = 0, count = 0;
+			if (values) {
+				for (var i=0,j=values.length; i<j; i++) {
+					if (values[i] !== null) {
+						count++;
+						sum += values[i];
+					}
+				}
+			}
+			return "合計 "+sum+"\n[ "+count+" / "+values.length+" ]"
+		}};
+	var countStrategy = {
+		map: function(key, task) {
+			var h = task[key];
+			return (h == "" || h === null || h === undefined) ? null : h;
+		},
+		reduce: function(values) {
+			var count = {}, keys = [];
+			if (values) {
+				for (var i=0,j=values.length; i<j; i++) {
+					var val = values[i];
+					if (val !== null) {
+						var cc = count[val]
+						if (cc) count[val] = cc+1;
+						else {
+							count[val] = 1;
+							keys.push(val);
+						}
+					}
+				}
+				keys.sort(function(i,j) { return count[j]-count[i]; });
+				return keys.map(function(key) { return key+": "+count[key]; })
+					.join("\n");
+			}
+			return "なし";
+		}};
+	return {
+		estimatedHours	: sumStrategy,
+		actualHours		: sumStrategy,
+		issueTypeName	: countStrategy,
+		statusName		: countStrategy,
+		priorityName	: countStrategy,
+		milestoneName	: countStrategy,
+		assignerName	: countStrategy,
+		finishCauseName	: countStrategy,
+		componentName	: countStrategy,
+		versionName		: countStrategy
+	};
 };
 
 
