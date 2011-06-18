@@ -337,7 +337,6 @@ function addChangeViewButton() {
                          function(ev) {
                              handler && handler();
                          },false);
-    setTimeout(startPreTasks, 1);
     parent.insertBefore(elm,parent.firstChild);
 }
 
@@ -357,7 +356,9 @@ var deferredTask = {
     }
 };
 
+// startPreTasks は AF ボタン押す前に処理開始しても良いようになっている
 function waitForPreTasks() {
+    startPreTasks();
     if (deferredTask.preTasksNum == 0) {
         buildTaskTable();
     } else {
