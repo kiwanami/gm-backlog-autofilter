@@ -2939,7 +2939,7 @@ BacklogTask.columnIds = BacklogTask.columnPairs.map(function(i) { return i.key; 
 // columnPairs からこのアプリが表示して意味がありそうなもの
 BacklogTask.displayColumnIds = "keyName issueTypeName componentName summary priorityName versionName milestoneName created startDate limitDate estimatedHours actualHours updated createdUserName assignerName statusName".split(" ");
 
-// key -> name
+// key -> name のマップ
 BacklogTask.cmap = (function(){
     var map = {};
     for(var i=0;i<BacklogTask.columnIds.length;i++) {
@@ -2948,7 +2948,7 @@ BacklogTask.cmap = (function(){
     return map;
 })();
 
-// columnPairs, columnIds, columnNames, cmap の整合性を取るために、
+// columnPairs, columnIds, columnNames, cmap, displayColumnIds の整合性を取るために、
 // 上の基本フィールド以外のカスタムフィールドはこの関数を使って追加する。
 BacklogTask.addCustomColumn = function(id, name, displayFlag) {
 	BacklogTask.columnPairs.push( { key:id, name: name} );
@@ -2963,37 +2963,6 @@ BacklogTask.prototype.toString = function() {
 };
 BacklogTask.prototype.getDescriptionHTML = function () {
     return this.description.replace(/\n/g,"<br />");
-};
-BacklogTask.prototype.unserializeDesc = function() {
-    var desc = this.description;
-    var CC = BacklogTask.CUSTOM_COLUMNS.CC;
-    if (!desc || !desc.match(BacklogTask.CUSTOM_COLUMNS.START.tag)) {
-        for(var i in CC) { //空の値
-            this[CC[i].columnId] = ((CC[i].type == "number") ? 0 : "");
-        }
-        return;
-    }
-    for(var i in CC) {
-        var v = (desc.match(CC[i].rx)||[])[1];
-        if (!v) continue;
-        if (CC[i].type == "number" && v.match(/^[ 0-9]+$/)) {
-            v = parseInt(v,10);
-        }
-        this[CC[i].columnId] = v; 
-   }
-    var m = desc.match(new RegExp("^([\\s\\S]*)"+BacklogTask.CUSTOM_COLUMNS.START.tag));
-    if (m) {
-        this.description = m[1].trim();
-    }
-};
-BacklogTask.prototype.serializeDesc = function() {
-    var CC = BacklogTask.CUSTOM_COLUMNS.CC;
-    var list = [];
-    for(var i in CC) {
-        list.push(CC[i].tag+":"+this[CC[i].columnId]);
-    }
-    var text = this.description + "\n"+BacklogTask.CUSTOM_COLUMNS.START.tag+"\n"+list.join("\n");
-    this.description = text;
 };
 
 /**
@@ -3028,45 +2997,8 @@ BacklogTask.initByCSV = function(line,mapper) {
         }
     }
     t.description = t.description.replace(/\\\\r\\\n/g,"\n").replace(/\\\\r\\\\n/g,"\n");
-    t.unserializeDesc();
     return t;
 };
-
-//独自カラムの定義
-BacklogTask.CUSTOM_COLUMNS = {
-    START: {tag:"%CUSTOM_COLUMNS"},
-    CC: {
-        //START_DATE : {tag:"%START_DATE",type:"text"},
-        //ESTIMATE   : {tag:"%ESTIMATE",  type:"number"}
-    }
-};
-
-//CUSTOM_COLUMNSの名前からCamelCaseの名前に変換する
-// Ex: START_DATE -> startDate
-BacklogTask.tag2id = function(tag) {
-    var words = tag.substring(1).split(/_/);
-    words[0] = words[0].toLowerCase();
-    if (words.length == 1) return words[0];
-    for(var i=1;i<words.length;i++) {
-        words[i] = words[i][0]+words[i].substring(1).toLowerCase();
-    }
-    return words.join("");
-};
-
-//独自カラムをパースするのに必要なオブジェクトを用意
-// TAGSに ["START_DATE", "ESTIMATE"]
-// もとのオブジェクトにパース用のrx、カラムID用のcolumnIdを用意
-BacklogTask.TAGS = 
-    (function() {
-         var ret = [];
-         var CC = BacklogTask.CUSTOM_COLUMNS.CC;
-         for(var i in CC) {
-             ret.push(CC[i].tag);
-             CC[i].rx = new RegExp(CC[i].tag+":(.*)");
-             CC[i].columnId = BacklogTask.tag2id(CC[i].tag);
-         }
-     })();
-
 
 
 //==================================================
