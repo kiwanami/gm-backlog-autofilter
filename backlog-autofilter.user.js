@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-18 00:39:37 sakurai>
+// Time-stamp: <2011-06-18 13:11:36 sakurai>
 
 
 //==================================================
@@ -2391,9 +2391,14 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         this.optionId = arg.optionId;
         this.perform = arg.action || K;
         this.isSelected = arg.isSelected || K;
+		var title = this.title;
+		if (tableColumnModel.getColumnModel(this.columnId).multiListValues) {
+			title = title.replace(/,/g, " / ");
+		}
         this.optionElm = 
             E("option",{value:this.optionId,
-                        textContent:this.title});
+                        textContent:title,
+						title:title});
     }
     
     function MenuManager(thElm) {
@@ -2433,7 +2438,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             } catch (e) { }//もみ消し
         };
         this.doubleClickAction = NOP;
-                        
+        
         document.body.addEventListener("click",this.finishMenu,false);
         
         var actionMap = []; // index -> action
