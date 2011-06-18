@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-19 00:46:44 sakurai>
+// Time-stamp: <2011-06-19 01:16:14 sakurai>
 
 
 //==================================================
@@ -21,19 +21,17 @@
 if (typeof UpdateChecker != "undefined") {
     new function() {
         var af_url = 'http://kiwanami.net/prog/gm_backlog/autofilter/backlog-autofilter.user.js';
-        var uc = new UpdateChecker(
-            {
+        var uc = new UpdateChecker({
                 script_name: 'Backlog Autofilter'
                 ,script_url: af_url
                 ,current_version: '0.3.0' // ### VERSION ###
             });
-        GM_registerMenuCommand('Backlog AF - update check', 
-                               function() { 
-                                   GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
-                                   //あんまり美しくない。。。
-                                   uc.script_url = af_url + '?'+(new Date).getTime()+'.user.js';
-                                   uc.check_update();
-                               });
+        GM_registerMenuCommand('Backlog AF - update check', function() { 
+            GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
+            //あんまり美しくない。。。
+            uc.script_url = af_url + '?'+(new Date).getTime()+'.user.js';
+            uc.check_update();
+        });
     }
 }
 
@@ -47,24 +45,24 @@ if (typeof UpdateChecker != "undefined") {
 // @source http://gist.github.com/3242.txt
 //  written by os0x
 function $X (exp, context) {
-  context || (context = document);
-  var expr = (context.ownerDocument || context).createExpression(exp, function (prefix) {
-    return document.createNSResolver(context.documentElement || context).lookupNamespaceURI(prefix) ||
-      context.namespaceURI || document.documentElement.namespaceURI || "";
-  });
+    context || (context = document);
+    var expr = (context.ownerDocument || context).createExpression(exp, function (prefix) {
+        return document.createNSResolver(context.documentElement || context).lookupNamespaceURI(prefix) ||
+            context.namespaceURI || document.documentElement.namespaceURI || "";
+    });
  
-  var result = expr.evaluate(context, XPathResult.ANY_TYPE, null);
+    var result = expr.evaluate(context, XPathResult.ANY_TYPE, null);
     switch (result.resultType) {
-      case XPathResult.STRING_TYPE : return result.stringValue;
-      case XPathResult.NUMBER_TYPE : return result.numberValue;
-      case XPathResult.BOOLEAN_TYPE: return result.booleanValue;
-      case XPathResult.UNORDERED_NODE_ITERATOR_TYPE:
+    case XPathResult.STRING_TYPE : return result.stringValue;
+    case XPathResult.NUMBER_TYPE : return result.numberValue;
+    case XPathResult.BOOLEAN_TYPE: return result.booleanValue;
+    case XPathResult.UNORDERED_NODE_ITERATOR_TYPE:
         // not ensure the order.
         var ret = [], i = null;
         while (i = result.iterateNext()) ret.push(i);
         return ret;
     }
-  return null;
+    return null;
 }
 
 function $(id) {
@@ -104,8 +102,8 @@ addStyle(<><![CDATA[
     th.autofilter-sort { background-color: #D3E0EF; }
 
     table.autofilter > tfoot { overflow-y:scroll; overflow-x:hidden; height:%TF-HEIGHT%px; cursor:pointer; }
-	table.autofilter > tfoot.hide { display: none; }
-	table.autofilter > tfoot.wide { overflow-y:scroll; overflow-x:hidden; height:auto; cursor:pointer;}
+    table.autofilter > tfoot.hide { display: none; }
+    table.autofilter > tfoot.wide { overflow-y:scroll; overflow-x:hidden; height:auto; cursor:pointer;}
     table.autofilter > tfoot > th { vertical-align: top; background-color: #F9F8E3; overflow-x:hidden; text-align: left;}
     /* ff3で色が付かない？ */
     table.autofilter tr.odd td { background-color:#f0f0f0; }
@@ -165,13 +163,13 @@ var scripts = [
     "/script/popup-dialog.R20081128.js",
     "/script/dragdrop.R20081128.js"
 ].map(function (url) {
-          return E("script",{type:"text/javascript",src:url});
-      });
-scripts.push( E("link",
-                {href    :"/script/jscalendar/calendar-blue.R20081128.css",
-                 rel     : "stylesheet",
-                 type    : "text/css",
-                 charset : "utf-8"}) );
+    return E("script",{type:"text/javascript",src:url});
+});
+scripts.push( E("link", {
+    href :"/script/jscalendar/calendar-blue.R20081128.css",
+    rel  : "stylesheet",
+    type : "text/css",
+    charset : "utf-8"}) );
 var head = document.getElementsByTagName('head')[0];
 scripts.forEach(function(item,index) { head.appendChild(item); });
 
@@ -342,10 +340,9 @@ function addChangeViewButton() {
     var handler = waitForPreTasks;
     var elm = E("a",{href:"javascript:void(0)", textContent: "[AF]"});
     var parent = $$("td","ico")[0];
-    elm.addEventListener("click",
-                         function(ev) {
-                             handler && handler();
-                         },false);
+    elm.addEventListener("click", function(ev) {
+        handler && handler();
+    },false);
     parent.insertBefore(elm,parent.firstChild);
 }
 
@@ -442,10 +439,11 @@ function buildTaskTable() {
     }
 
     function includeCSS() {
-        var link = E("link",{href    :"/styles/common/loom.R20081128.css",
-                             rel     : "stylesheet",
-                             type    : "text/css",
-                             charset : "utf-8"});
+        var link = E("link", {
+            href     :"/styles/common/loom.R20081128.css",
+            rel  : "stylesheet",
+            type     : "text/css",
+            charset : "utf-8"});
         var head = document.getElementsByTagName('head')[0];
         head.appendChild(link);
     }
@@ -474,8 +472,8 @@ function buildTaskTable() {
             E("a",{href:aa[3].href,textContent:"[Wiki]",
                    id:"navi-wiki",title:"Wiki",target:"_blank"})
         ].forEach(function(item,index) {
-                      components.actionPanel.appendChild(item);
-                  });
+            components.actionPanel.appendChild(item);
+        });
         
         //全画面乗っ取り
         components.container.innerHTML = "";
@@ -490,10 +488,9 @@ function buildTaskTable() {
         var a = E("a",{href:"javascript:void(0);",alt:"表示設定"},[img]);
         components.actionPanel.appendChild(a);
         components.settingButton = a;
-        a.addEventListener("click",
-              function(ev) {
-                  showTableSettingMenu(ev,components,afTable);
-              },false);
+        a.addEventListener("click", function(ev) {
+            showTableSettingMenu(ev,components,afTable);
+        },false);
     }
     
     function makeFindPanel() {
@@ -534,14 +531,13 @@ function buildTaskTable() {
         searchPanel.innerHTML = "isearch:";
         searchPanel.appendChild( findField );
         afTable.setExternalFilter(model);
-        setInterval(
-            function searchInterval() {
-                var t = findField.value;
-                if (model.searchText != t) {
-                    model.setText(t);
-                    afTable.updateTableView();
-                }
-            },800);
+        setInterval( function searchInterval() {
+            var t = findField.value;
+            if (model.searchText != t) {
+                model.setText(t);
+                afTable.updateTableView();
+            }
+        },800);
         return model;
     }
 
@@ -554,27 +550,24 @@ function buildTaskTable() {
         actionPanel.insertBefore(reload, actionPanel.firstChild);
         
         var exportElm = E("button",{textContent: "export"});
-        exportElm.addEventListener("click",
-                                   function(ev) {
-                                       ev.stopPropagation();
-                                       exportTableTSV(components,afTable);},
-                                   false);
+        exportElm.addEventListener("click", function(ev) {
+            ev.stopPropagation();
+            exportTableTSV(components,afTable);
+        }, false);
         actionPanel.insertBefore(exportElm, actionPanel.firstChild);
         
         var popup = E("input",{type:"checkbox",id:"popup-switch"});
-        popup.addEventListener(
-            "change",function(ev) {
-                afTable.setPopupEnable(popup.checked);
-            },false);
+        popup.addEventListener( "change",function(ev) {
+            afTable.setPopupEnable(popup.checked);
+        },false);
         actionPanel.insertBefore(
             E("label",{}, [popup,TXT(":popup ")]),
             actionPanel.firstChild);
 
         var report = E("input",{type:"checkbox",id:"report-switch"});
-        report.addEventListener(
-            "change",function(ev) {
-                afTable.setReportEnable(report.checked);
-            },false);
+        report.addEventListener( "change",function(ev) {
+            afTable.setReportEnable(report.checked);
+        },false);
         actionPanel.insertBefore(
             E("label",{}, [report,TXT(":report ")]),
             actionPanel.firstChild);
@@ -598,15 +591,14 @@ function buildTaskTable() {
     // 現在の検索条件でタスクの一覧を取得してリストにする
     // @param callback( alistOfBacklogTasks );
     function retrieveTaskObjectList(callback) {
-        GM_xmlhttpRequest(
-            {
-                method: 'get',
-                url: BacklogHTML.getCSVURL(),
-                overrideMimeType: document.contentType+"; charset=Windows-31J",
-                onload: function(details){
-                    callback( buildTaskList(details.responseText) );
-                }
-            });
+        GM_xmlhttpRequest({
+            method: 'get',
+            url: BacklogHTML.getCSVURL(),
+            overrideMimeType: document.contentType+"; charset=Windows-31J",
+            onload: function(details){
+                callback( buildTaskList(details.responseText) );
+            }
+        });
         
         function buildTaskList(text) {
             var list = [];
@@ -625,7 +617,7 @@ function buildTaskTable() {
 
     function buildTableColumnModel() {
         //# 各カラムごとの違いなどを構築
-		// ※ BacklogTask 定義も参照
+        // ※ BacklogTask 定義も参照
         var templateMap = new DHash(
                 { //表示用のテンプレート
                     keyName: function() {
@@ -664,25 +656,25 @@ function buildTaskTable() {
                     new CustomFilterOption("完了以外", -10, function(i) { return i != "完了"; })
                 ]
             });
-		
-		// 複数選択リスト項目
-		var nameGetter = function(obj) { return obj.name; };
-		var multiListValues = {
-			versionName: BacklogAPI.VERSIONS.map(nameGetter),
-			milestoneName: BacklogAPI.VERSIONS.map(nameGetter)
-		};
-		
-		// カスタムフィールド設定追加
-		BacklogAPI.CUSTOM_FIELDS.forEach( function(item, index) {
-			BacklogTask.addCustomColumn(item.name,item.name,true);
-			// 複数リスト追加
-			if (item.type_id == BacklogAPI.CUSTOM_FIELD_TYPES.MULTI_SELECT) {
-				multiListValues[item.name] = item.items.map(nameGetter);
-			}
-			// 統計の種類を判定
-			BacklogTask.reportStrategies[item.name] = 
-				BacklogAPI.CUSTOM_FIELD_TYPES_REPORT[""+item.type_id];
-		});
+        
+        // 複数選択リスト項目
+        var nameGetter = function(obj) { return obj.name; };
+        var multiListValues = {
+            versionName: BacklogAPI.VERSIONS.map(nameGetter),
+            milestoneName: BacklogAPI.VERSIONS.map(nameGetter)
+        };
+        
+        // カスタムフィールド設定追加
+        BacklogAPI.CUSTOM_FIELDS.forEach( function(item, index) {
+            BacklogTask.addCustomColumn(item.name,item.name,true);
+            // 複数リスト追加
+            if (item.type_id == BacklogAPI.CUSTOM_FIELD_TYPES.MULTI_SELECT) {
+                multiListValues[item.name] = item.items.map(nameGetter);
+            }
+            // 統計の種類を判定
+            BacklogTask.reportStrategies[item.name] = 
+                BacklogAPI.CUSTOM_FIELD_TYPES_REPORT[""+item.type_id];
+        });
 
         //表示するカラム
         var tableColumnModel = new TableColumnModel(BacklogTask.displayColumnIds);
@@ -702,8 +694,8 @@ function buildTaskTable() {
                 model.sortColumnId = sortMap.v(columnId);
                 model.dataTemplate = templateMap.v(columnId);
                 model.visible      = (defaultOffColumns.indexOf(columnId) == -1);
-				model.multiListValues = multiListValues[columnId];
-				model.reportStrategy = BacklogTask.reportStrategies[columnId];
+                model.multiListValues = multiListValues[columnId];
+                model.reportStrategy = BacklogTask.reportStrategies[columnId];
                 
                 if (filterMap.v(columnId)) {
                     filterMap.v(columnId).forEach(
@@ -746,8 +738,8 @@ function TableColumnModel(_columnIds) {
         this.dataTemplate        = null;  // tdをレイアウトするときに使用するテンプレート
         
         this.visible             = true;  // このカラムを表示するかどうか
-		this.multiListValues     = null;  // 文字列のリスト→複数選択リスト項目なのでレイアウト変更したり、選択項目を付け加える
-		this.reportStrategy     = null;  // 簡易統計用関数。 {map: func, reduce: func} のオブジェクト。 null なら簡易統計は何もしない。
+        this.multiListValues     = null;  // 文字列のリスト→複数選択リスト項目なのでレイアウト変更したり、選択項目を付け加える
+        this.reportStrategy     = null;  // 簡易統計用関数。 {map: func, reduce: func} のオブジェクト。 null なら簡易統計は何もしない。
     }
     //public: カラムの表示用HTMLを返す
     ColumnModel.prototype.getListHTML = function(obj) {
@@ -756,7 +748,7 @@ function TableColumnModel(_columnIds) {
         } else {
             var data = obj[this.columnId];
             if  (data === undefined || data === null) return "";
-			return (this.multiListValues) ? data.replace(/,/g, "<br />") : data;
+            return (this.multiListValues) ? data.replace(/,/g, "<br />") : data;
         }
     };
     //public: このカラムのカスタム選択項目を option_id で検索する。
@@ -770,13 +762,13 @@ function TableColumnModel(_columnIds) {
             });
         return ret;
     };
-	//public: このカラムのデフォルトのフィルター用関数を返す
-	ColumnModel.prototype.getDefaultFilterFunction = function() {
+    //public: このカラムのデフォルトのフィルター用関数を返す
+    ColumnModel.prototype.getDefaultFilterFunction = function() {
         // this.value はフィルターで選択された値
-		return (this.multiListValues) ? 
-			function(i) { return i.indexOf(this.value)>=0; } :
-		    function(i) { return i === this.value; };
-	};
+        return (this.multiListValues) ? 
+            function(i) { return i.indexOf(this.value)>=0; } :
+            function(i) { return i === this.value; };
+    };
 
     columnIds.forEach(
         function(i,index) {
@@ -1404,14 +1396,14 @@ function execActionChangeLimit(event,components,afTable) {
 
     if (unsafeWindow.Calendar) {
         unsafeWindow.Calendar.setup({
-		    inputField	: "limitDate",
-		    ifFormat	: "%Y/%m/%d",
-		    showsTime	: false,
-	        button      : "limitDateCalendar",
-		    align		: "Bl",
-		    singleClick	: true,
-		    weekNumbers : false
-	    });
+            inputField  : "limitDate",
+            ifFormat    : "%Y/%m/%d",
+            showsTime   : false,
+            button      : "limitDateCalendar",
+            align       : "Bl",
+            singleClick : true,
+            weekNumbers : false
+        });
     }
 }
 
@@ -1687,7 +1679,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     var statusElm = _statusElm; // 現在の検索条件などを表示する領域
     var tableElm = _tableElm;   // このautofilterが取り付くテーブル
     var theadElm, tbodyElm;     // ヘッダーと表の本体
-	var tfootElm;  // 簡易集計用
+    var tfootElm;  // 簡易集計用
 
 
     //#=====(状態管理)========================================
@@ -1775,7 +1767,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             tableState.onClickTHSelection(ev);
         },false);
         ths.push(sel);
-		tfs.push(E("th"));
+        tfs.push(E("th"));
 
         tableColumnModel.each(function(columnId,model) {
             var th = E("th",
@@ -1788,22 +1780,22 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                 tableState.onClickTHColumn(ev,columnId);
             },false);
             ths.push(th);
-			var tf = E("th",{className: model.thClassName, id: model.tfId});
-			tfs.push(tf);
+            var tf = E("th",{className: model.thClassName, id: model.tfId});
+            tfs.push(tf);
         });
 
         ths.push(E("th",{className:"autofilter-spacer"}));
-		tfs.push(E("th"));
+        tfs.push(E("th"));
 
         theadElm = E("thead",{},ths);
         tableElm.appendChild(theadElm);
         tbodyElm = E("tbody",{});
         tableElm.appendChild(tbodyElm);
-		tfootElm = E("tfoot",{},tfs);
-		tableElm.appendChild(tfootElm);
-		tfootElm.addEventListener("click", function(ev) {
-			reportManager.onClickRow();
-		},false);
+        tfootElm = E("tfoot",{},tfs);
+        tableElm.appendChild(tfootElm);
+        tfootElm.addEventListener("click", function(ev) {
+            reportManager.onClickRow();
+        },false);
     }
     setupTable();
 
@@ -1882,7 +1874,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                                   filter: null, //AF用フィルター候補
                                   //nullですべて, filter用インタフェース(test,title)
                                   th: $(columnModel.thId),
-								  tf: $(columnModel.tfId)
+                                  tf: $(columnModel.tfId)
                               };
                           });
                       return model;
@@ -1952,8 +1944,8 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             tableColumnModel.each(
                 function(columnId,columnModel) {
                     self.columns[columnId].values = 
-						(columnModel.multiListValues) ? 
-						getColumnValuesMultiList(columnModel) : getColumnValues(columnId);
+                        (columnModel.multiListValues) ? 
+                        getColumnValuesMultiList(columnModel) : getColumnValues(columnId);
                 });
             // 重複を取り除いた一覧を返す
             function getColumnValues(cid) {
@@ -1968,18 +1960,18 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                 list.sort();
                 return list;
             }
-			// 複数リストの場合は元になるリストの値も使う
-			function getColumnValuesMultiList(columnModel) {
-				var values = getColumnValues(columnModel.columnId);
-				var sample = values.join(" ");
-				columnModel.multiListValues.forEach( function(item, index) {
-					if (sample.indexOf(item) >= 0 && values.indexOf(item) < 0) {
-						values.push(item);
-					}
-				});
-				values.sort();
-				return values;
-			}
+            // 複数リストの場合は元になるリストの値も使う
+            function getColumnValuesMultiList(columnModel) {
+                var values = getColumnValues(columnModel.columnId);
+                var sample = values.join(" ");
+                columnModel.multiListValues.forEach( function(item, index) {
+                    if (sample.indexOf(item) >= 0 && values.indexOf(item) < 0) {
+                        values.push(item);
+                    }
+                });
+                values.sort();
+                return values;
+            }
         },
         existsBlank: function(columnId) {
             var ret = false;
@@ -2004,7 +1996,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             return filteredList;
 
             function isVisibleTask(task) {
-				// 各カラムのフィルターが選択されているかどうかチェック
+                // 各カラムのフィルターが選択されているかどうかチェック
                 for(var j=0;j<columnIds.length;j++) {
                     var cid = columnIds[j];
                     var fv = this.columns[cid].filter;
@@ -2013,11 +2005,11 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                         return false; // フィルターで弾かれたら×
                     }
                 }
-				// 選択フィルターで弾かれていたら×
+                // 選択フィルターで弾かれていたら×
                 if (this.selectionFilter && !this.selectionFilter.test(task.id)) {
                     return false;
                 }
-				// 外部フィルター (isearch など) で弾かれていたら×
+                // 外部フィルター (isearch など) で弾かれていたら×
                 if (this.externalFilter && !this.externalFilter.test(task)) {
                     return false;
                 }
@@ -2369,7 +2361,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         updateTableStatusElement();
         filterModel.updateThs();
         selectionModel.updateSelectionFromModel();
-		reportManager.updateReports(sortedTaskList);
+        reportManager.updateReports(sortedTaskList);
     };
 
     //テーブルのステータスを更新する時（再描画、選択変更）に呼ばれる
@@ -2408,7 +2400,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             // フィルターで比較に使う値
             this.value = value;
             // 引数のオブジェクトを表示するかどうか。trueで表示。
-			this.test = tableColumnModel.getColumnModel(columnId).getDefaultFilterFunction();
+            this.test = tableColumnModel.getColumnModel(columnId).getDefaultFilterFunction();
         }
         // ステータス表示に表示するもの。
         this.title = title;
@@ -2431,28 +2423,28 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         this.optionId = arg.optionId;
         this.perform = arg.action || K;
         this.isSelected = arg.isSelected || K;
-		var title = this.title;
-		if (tableColumnModel.getColumnModel(this.columnId).multiListValues) {
-			title = title.replace(/,/g, " / ");
-		}
+        var title = this.title;
+        if (tableColumnModel.getColumnModel(this.columnId).multiListValues) {
+            title = title.replace(/,/g, " / ");
+        }
         this.optionElm = 
             E("option",{value:this.optionId,
                         textContent:title,
-						title:title});
+                        title:title});
     }
     
     function MenuManager(thElm) {
         var self = this;
-		var menuMargin = 35;
+        var menuMargin = 35;
         var menuElm = $('column-menu');
         if (menuElm) {
             document.body.removeChild(menuElm);
         }
         menuElm = E("div",{id: "column-menu"});
         var pos = cumulativeOffset(thElm);
-		if ( (pos[0]+thElm.offsetWidth+menuMargin) > tableElm.offsetWidth ) {
-			pos[0] = pos[0] - menuMargin - 5;
-		}
+        if ( (pos[0]+thElm.offsetWidth+menuMargin) > tableElm.offsetWidth ) {
+            pos[0] = pos[0] - menuMargin - 5;
+        }
         menuElm.style.left = pos[0]+"px";
         menuElm.style.top  = (pos[1]+thElm.offsetHeight+1)+"px";
         var selectElm = E("select",{size:10});
@@ -2577,7 +2569,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                         return (!fmodel.filter) && (sortModel.getIndex(columnId) == -1);
                     }
                 }));
-		// ソート
+        // ソート
         [{title:"[ ↓昇順  ]",value:OPT_ASC}, {title:"[ ↑降順  ]",value:OPT_DESC}].forEach(
             function(item,index) {
                 actions.push(
@@ -2601,7 +2593,7 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
                         }));
             });
 
-		// 空白以外
+        // 空白以外
         if (filterModel.existsBlank(columnId)) {
             actions.push(
                 new AutofilterMenuAction(
@@ -2751,58 +2743,58 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
 
     //#====(集計関係)================================================
 
-	var reportManager = new function ReportManager() {
-		this.active = false;
+    var reportManager = new function ReportManager() {
+        this.active = false;
 
-		this.updateReports = function(tasklist) {
-			if (!this.active) return;
-			var models = [], data = [], ids = []; // 順番は維持
-			tableColumnModel.each(function( columnId, model ) {
-				if (model.reportStrategy) {
-					ids.push(columnId);
-					models.push(model);
-					data.push([]);
-				}});
-			var mnum = models.length;
-			for (var i = 0; i < tasklist.length; i++) {
-				var task = tasklist[i];
-				for (var j = 0; j < mnum; j++) {
-					data[j].push( models[j].reportStrategy.map(ids[j], task) );
-				}
-			}
-			for (var j = 0; j < mnum; j++) {
-				var result = models[j].reportStrategy.reduce( data[j] );
-				var elm = $(models[j].tfId);
-				elm.innerHTML = result.replace(/\n/g,"<br />");
-				elm.title = result.replace(/\n/g," / ");
-			}
-		};
-		
-		this.enable = function() {
-			this.wide = false;
-			tfootElm.className = "";
-			this.active = true;
-			tbodyElm.className = "report";
-			this.updateReports(sortModel.sort(filterModel.filter(taskList)));
-		};
-		this.disable = function() {
-			tfootElm.className = "hide";
-			this.active = false;
-			tbodyElm.className = "";
-		};
+        this.updateReports = function(tasklist) {
+            if (!this.active) return;
+            var models = [], data = [], ids = []; // 順番は維持
+            tableColumnModel.each(function( columnId, model ) {
+                if (model.reportStrategy) {
+                    ids.push(columnId);
+                    models.push(model);
+                    data.push([]);
+                }});
+            var mnum = models.length;
+            for (var i = 0; i < tasklist.length; i++) {
+                var task = tasklist[i];
+                for (var j = 0; j < mnum; j++) {
+                    data[j].push( models[j].reportStrategy.map(ids[j], task) );
+                }
+            }
+            for (var j = 0; j < mnum; j++) {
+                var result = models[j].reportStrategy.reduce( data[j] );
+                var elm = $(models[j].tfId);
+                elm.innerHTML = result.replace(/\n/g,"<br />");
+                elm.title = result.replace(/\n/g," / ");
+            }
+        };
+        
+        this.enable = function() {
+            this.wide = false;
+            tfootElm.className = "";
+            this.active = true;
+            tbodyElm.className = "report";
+            this.updateReports(sortModel.sort(filterModel.filter(taskList)));
+        };
+        this.disable = function() {
+            tfootElm.className = "hide";
+            this.active = false;
+            tbodyElm.className = "";
+        };
 
-		this.wide = false; // クリックしたら広げる
-		this.onClickRow = function() {
-			this.wide = !this.wide;
-			if (this.wide) {
-				tfootElm.className = "wide";
-			} else {
-				tfootElm.className = "";
-			}
-		};
-	};
+        this.wide = false; // クリックしたら広げる
+        this.onClickRow = function() {
+            this.wide = !this.wide;
+            if (this.wide) {
+                tfootElm.className = "wide";
+            } else {
+                tfootElm.className = "";
+            }
+        };
+    };
 
-	reportManager.disable();
+    reportManager.disable();
 
     afTable.setReportEnable = function(b) {
         if (b) reportManager.enable();
@@ -3057,11 +3049,11 @@ BacklogTask.cmap = (function(){
  * 基本フィールド以外のカスタムフィールドはこの関数を使って追加する。
  */
 BacklogTask.addCustomColumn = function(id, name, displayFlag) {
-	BacklogTask.columnPairs.push( { key:id, name: name} );
-	BacklogTask.columnIds.push(id);
-	BacklogTask.columnNames.push(name);
-	BacklogTask.cmap[id] = name;
-	if (displayFlag) BacklogTask.displayColumnIds.push(id);
+    BacklogTask.columnPairs.push( { key:id, name: name} );
+    BacklogTask.columnIds.push(id);
+    BacklogTask.columnNames.push(name);
+    BacklogTask.cmap[id] = name;
+    if (displayFlag) BacklogTask.displayColumnIds.push(id);
 }
 
 BacklogTask.prototype.toString = function() {
@@ -3109,60 +3101,60 @@ BacklogTask.initByCSV = function(line,mapper) {
 // 簡易統計の定義
 
 BacklogTask.defaultReportStrategies = {
-	sum: {
-		map: function(key, task) {
-			var h = task[key];
-			return (h === null || h === undefined || h == "") ? null : parseInt(h,10);
-		},
-		reduce: function(values) {
-			var sum = 0, count = 0;
-			if (values) {
-				for (var i=0,j=values.length; i<j; i++) {
-					if (values[i] !== null) {
-						count++;
-						sum += values[i];
-					}
-				}
-			}
-			return "合計 "+sum+"\n[ "+count+" / "+values.length+" ]"
-		}},
-	count: {
-		map: function(key, task) {
-			var h = task[key];
-			return (h == "" || h === null || h === undefined) ? null : h.replace(/,/g,"\n");
-		},
-		reduce: function(values) {
-			var count = {}, keys = [];
-			if (values) {
-				for (var i=0,j=values.length; i<j; i++) {
-					var val = values[i];
-					if (val !== null) {
-						var cc = count[val]
-						if (cc) count[val] = cc+1;
-						else {
-							count[val] = 1;
-							keys.push(val);
-						}
-					}
-				}
-				keys.sort(function(i,j) { return count[j]-count[i]; });
-				return keys.map(function(key) { return key+": "+count[key]; })
-					.join("\n");
-			}
-			return "なし";
-		}}
+    sum: {
+        map: function(key, task) {
+            var h = task[key];
+            return (h === null || h === undefined || h == "") ? null : parseInt(h,10);
+        },
+        reduce: function(values) {
+            var sum = 0, count = 0;
+            if (values) {
+                for (var i=0,j=values.length; i<j; i++) {
+                    if (values[i] !== null) {
+                        count++;
+                        sum += values[i];
+                    }
+                }
+            }
+            return "合計 "+sum+"\n[ "+count+" / "+values.length+" ]"
+        }},
+    count: {
+        map: function(key, task) {
+            var h = task[key];
+            return (h == "" || h === null || h === undefined) ? null : h.replace(/,/g,"\n");
+        },
+        reduce: function(values) {
+            var count = {}, keys = [];
+            if (values) {
+                for (var i=0,j=values.length; i<j; i++) {
+                    var val = values[i];
+                    if (val !== null) {
+                        var cc = count[val]
+                        if (cc) count[val] = cc+1;
+                        else {
+                            count[val] = 1;
+                            keys.push(val);
+                        }
+                    }
+                }
+                keys.sort(function(i,j) { return count[j]-count[i]; });
+                return keys.map(function(key) { return key+": "+count[key]; })
+                    .join("\n");
+            }
+            return "なし";
+        }}
 };
 BacklogTask.reportStrategies = {
-	estimatedHours	: BacklogTask.defaultReportStrategies.sum,
-	actualHours		: BacklogTask.defaultReportStrategies.sum,
-	issueTypeName	: BacklogTask.defaultReportStrategies.count,
-	statusName		: BacklogTask.defaultReportStrategies.count,
-	priorityName	: BacklogTask.defaultReportStrategies.count,
-	milestoneName	: BacklogTask.defaultReportStrategies.count,
-	assignerName	: BacklogTask.defaultReportStrategies.count,
-	finishCauseName	: BacklogTask.defaultReportStrategies.count,
-	componentName	: BacklogTask.defaultReportStrategies.count,
-	versionName		: BacklogTask.defaultReportStrategies.count
+    estimatedHours  : BacklogTask.defaultReportStrategies.sum,
+    actualHours     : BacklogTask.defaultReportStrategies.sum,
+    issueTypeName   : BacklogTask.defaultReportStrategies.count,
+    statusName      : BacklogTask.defaultReportStrategies.count,
+    priorityName    : BacklogTask.defaultReportStrategies.count,
+    milestoneName   : BacklogTask.defaultReportStrategies.count,
+    assignerName    : BacklogTask.defaultReportStrategies.count,
+    finishCauseName : BacklogTask.defaultReportStrategies.count,
+    componentName   : BacklogTask.defaultReportStrategies.count,
+    versionName     : BacklogTask.defaultReportStrategies.count
 };
 
 
@@ -3286,9 +3278,9 @@ var BacklogAPI = {
     ],
     RESOLUTION: { // タスクを完了させた理由
         DONE           : 0,
-        REMAIN         : 1,
-        INVALID        : 2,
-        DUPLICATED     : 3,
+        REMAIN       : 1,
+        INVALID     : 2,
+        DUPLICATED   : 3,
         NOT_RECURRENCE : 4
     },
     RESOLUTIONS: [
@@ -3301,30 +3293,30 @@ var BacklogAPI = {
     PRIORITY: { // タスクの優先度
         HIGH   : 2,
         MIDDLE : 3,
-        LOW    : 4
+        LOW : 4
     },
     PRIORITIES: [
         {id: 2, name: "高"},
         {id: 3, name: "中"},
         {id: 4, name: "低"}
     ],
-	CUSTOM_FIELD_TYPES: {
-		TEXT:			 1,
-		AREA:			 2,
-		NUMBER:			 3,
-		DATE:			 4,
-		SELECT:			 5,
-		MULTI_SELECT:	 6,
-		CHECKBOX:		 7,
-		RADIOBOX:		 8
-	},
-	CUSTOM_FIELD_TYPES_REPORT: { // カスタムフィールドの統計タイプ
-		"3": BacklogTask.defaultReportStrategies.sum,
-		"5": BacklogTask.defaultReportStrategies.count,
-		"6": BacklogTask.defaultReportStrategies.count,
-		"7": BacklogTask.defaultReportStrategies.count,
-		"8": BacklogTask.defaultReportStrategies.count,
-	},
+    CUSTOM_FIELD_TYPES: {
+        TEXT:            1,
+        AREA:            2,
+        NUMBER:          3,
+        DATE:            4,
+        SELECT:          5,
+        MULTI_SELECT:    6,
+        CHECKBOX:        7,
+        RADIOBOX:        8
+    },
+    CUSTOM_FIELD_TYPES_REPORT: { // カスタムフィールドの統計タイプ
+        "3": BacklogTask.defaultReportStrategies.sum,
+        "5": BacklogTask.defaultReportStrategies.count,
+        "6": BacklogTask.defaultReportStrategies.count,
+        "7": BacklogTask.defaultReportStrategies.count,
+        "8": BacklogTask.defaultReportStrategies.count,
+    },
     _execAPI: function(method,paramXML,responseHandler) {
         new XMLRPC().proxy(this.url).call(method,paramXML)
             .result(responseHandler);
@@ -3384,7 +3376,7 @@ var BacklogAPI = {
         var self = this;
         this._execAPI(method,param,
             function(response){
-				//console.log(response);
+                //console.log(response);
                 var list = [];
                 for each (var value in response.params.param.value.array.data.value) {
                     list.push( self._struct2obj(value.struct) );
@@ -3456,11 +3448,11 @@ var BacklogAPI = {
      * 必須(key,statusId)と変えたいものだけ入れる
      * 
      * >> change :
-     * key*         : EXT-1
+     * key*      : EXT-1
      * statusId*    : 状態ID
      * assignerId   : 担当者ID
      * resolutionId : 完了理由ID
-     * comment      : コメント
+     * comment    : コメント
      * 
      * >> 帰り値はタスクオブジェクト
      */
@@ -3478,10 +3470,10 @@ var BacklogAPI = {
      * 必須(key)と変えたいものだけ入れる。
      * 
      * >> task :
-     * key*         : EXT-1
-     * summary      : 件名
+     * key*      : EXT-1
+     * summary    : 件名
      * description  : 詳細
-     * due_date     : "YYYYMMDD"
+     * due_date  : "YYYYMMDD"
      * issueTypeId  : 分類  1:bug, 2:task, 3:wish, 4:etc
      * componentId  : カテゴリID
      * versionId    : マイルストーンID
@@ -3489,7 +3481,7 @@ var BacklogAPI = {
      * priorityId   : 優先度ID
      * assignerId   : 担当者ユーザーID
      * resolutionId : 完了理由ID
-     * comment      : コメント
+     * comment    : コメント
      * 
      * >> 帰り値はタスクオブジェクト
      */
