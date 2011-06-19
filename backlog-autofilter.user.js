@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-19 01:16:14 sakurai>
+// Time-stamp: <2011-06-19 14:48:23 sakurai>
 
 
 //==================================================
@@ -80,12 +80,15 @@ var clientWidth  = window.innerWidth;
 var clientHeight = window.innerHeight;
 var tfootHeight = 28;
 
-function addStyle(css) { 
+function addStyle(css) {
+	var tbodyHeight = clientHeight*0.8;
     var csst = css
         .replace(/;/g,' !important;')
-        .replace(/%HEIGHT%/, ""+(clientHeight*0.8))
+        .replace(/%HEIGHT%/, ""+tbodyHeight)
         .replace(/%TF-HEIGHT%/, ""+tfootHeight)
-        .replace(/%WD-HEIGHT%/, ""+(clientHeight*0.8-tfootHeight));
+        .replace(/%BF-HEIGHT%/, ""+(tbodyHeight-tfootHeight))
+        .replace(/%WBF-HEIGHT%/, ""+(tbodyHeight*0.75-tfootHeight))
+        .replace(/%WTF-HEIGHT%/, ""+(tbodyHeight*0.25+tfootHeight));
     GM_addStyle(csst);
 }
 
@@ -94,7 +97,8 @@ addStyle(<><![CDATA[
     /* tableのサイズなど調整 */
     table.autofilter { border: 1px solid grey; border-spacing:0px; border-collapse: separate; }
     table.autofilter tbody { overflow-x:hidden; overflow-y:scroll; height:%HEIGHT%px; background-color:white; }
-    table.autofilter tbody.report { overflow-x:hidden; overflow-y:scroll; height:%WD-HEIGHT%px; background-color:white; }
+    table.autofilter tbody.report { overflow-x:hidden; overflow-y:scroll; height:%BF-HEIGHT%px; background-color:white; }
+    table.autofilter tbody.wide-report { overflow-x:hidden; overflow-y:scroll; height:%WBF-HEIGHT%px; background-color:white; }
 
     /* Autofilter の th 表示調整用 */
     table.autofilter > thead > th { cursor:pointer; }
@@ -103,7 +107,7 @@ addStyle(<><![CDATA[
 
     table.autofilter > tfoot { overflow-y:scroll; overflow-x:hidden; height:%TF-HEIGHT%px; cursor:pointer; }
     table.autofilter > tfoot.hide { display: none; }
-    table.autofilter > tfoot.wide { overflow-y:scroll; overflow-x:hidden; height:auto; cursor:pointer;}
+    table.autofilter > tfoot.wide { overflow-y:scroll; overflow-x:hidden; height:%WTF-HEIGHT%px; cursor:pointer;}
     table.autofilter > tfoot > th { vertical-align: top; background-color: #F9F8E3; overflow-x:hidden; text-align: left;}
     /* ff3で色が付かない？ */
     table.autofilter tr.odd td { background-color:#f0f0f0; }
@@ -2788,8 +2792,10 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
             this.wide = !this.wide;
             if (this.wide) {
                 tfootElm.className = "wide";
+				tbodyElm.className = "wide-report";
             } else {
                 tfootElm.className = "";
+				tbodyElm.className = "report";
             }
         };
     };
