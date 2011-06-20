@@ -11,7 +11,7 @@
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-19 14:48:23 sakurai>
+// Time-stamp: <2011-06-20 16:30:45 sakurai>
 
 
 //==================================================
@@ -2428,7 +2428,8 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
         this.perform = arg.action || K;
         this.isSelected = arg.isSelected || K;
         var title = this.title;
-        if (tableColumnModel.getColumnModel(this.columnId).multiListValues) {
+        var model = tableColumnModel.getColumnModel(this.columnId);
+        if (model && model.multiListValues) {
             title = title.replace(/,/g, " / ");
         }
         this.optionElm = 
@@ -2659,88 +2660,81 @@ function AFTable(_tableElm, _statusElm, _tableColumnModel, _taskList) {
     //選択列のメニューActionの配列を作る
     function makeSelectionMenuActions() {
         var actions = [
-            new AutofilterMenuAction(
-                {            
-                    title:"[  すべて  ]",
-                    optionId:OPT_ALL,
-                    action: function act(ev) {
-                        filterModel.setSelectionFilter(null);
-                    },
-                    isSelected: function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_ALL);
-                    }}),
-            new AutofilterMenuAction(
-                {
-                    title:"[v]選択済み",optionId:OPT_SEL_SELECTED_ITEMS,
-                    action: function act(ev) {
-                        filterModel.setSelectionFilter({title:"選択済",optionId:OPT_SEL_SELECTED_ITEMS,
-                                                        test:bind(selectionModel,"isSelected")});
-                    },
-                    isSelected: function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_SELECTED_ITEMS);
-                    }}),
-            new AutofilterMenuAction(
-                {
-                    title:"[ ]非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
-                    action:function act(ev) {
-                        filterModel.setSelectionFilter({title:"非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
-                                                        test:bind(selectionModel,"isNotSelected")});
-                    },
-                    isSelected: function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_NOT_SELECTED_ITEMS);
-                    }}),
+            new AutofilterMenuAction({            
+                title:"[  すべて  ]",
+                optionId:OPT_ALL,
+                action: function act(ev) {
+                    filterModel.setSelectionFilter(null);
+                },
+                isSelected: function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_ALL);
+                }}),
+            new AutofilterMenuAction({
+                title:"[v]選択済み",optionId:OPT_SEL_SELECTED_ITEMS,
+                action: function act(ev) {
+                    filterModel.setSelectionFilter({title:"選択済",optionId:OPT_SEL_SELECTED_ITEMS,
+                                                    test:bind(selectionModel,"isSelected")});
+                },
+                isSelected: function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_SELECTED_ITEMS);
+                }}),
+            new AutofilterMenuAction({
+                title:"[ ]非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
+                action:function act(ev) {
+                    filterModel.setSelectionFilter({title:"非選択",optionId:OPT_SEL_NOT_SELECTED_ITEMS,
+                                                    test:bind(selectionModel,"isNotSelected")});
+                },
+                isSelected: function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SEL_NOT_SELECTED_ITEMS);
+                }}),
             new AutofilterMenuAction({title:"----------"}),
             
-            new AutofilterMenuAction(
-                {
-                    title:"●表示されているものにチェック",optionId:OPT_SELECT_SHOWEN_ITEMS,
-                 action:function act(ev) {
-                     selectionModel.selectShowedTasks();
-                     selectionModel.updateSelectionFromModel();
-                     updateTableStatusElement();
-                     return true;
-                 },
-                 isSelected:function isSelected() {
-                     return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_SHOWEN_ITEMS);
-                 }}),
-            new AutofilterMenuAction(
-                {
-                    title:"○表示されているものをクリア",optionId:OPT_CLEAR_SHOWEN_ITEMS,
-                    action:function act(ev) {
-                        selectionModel.clearShowedTasks();
-                        selectionModel.updateSelectionFromModel();
-                        updateTableStatusElement();
-                        return true;
-                    },
-                    isSelected:function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_SHOWEN_ITEMS);
-                    }}),
+            new AutofilterMenuAction({
+                title:"●表示されているものにチェック",optionId:OPT_SELECT_SHOWEN_ITEMS,
+                action:function act(ev) {
+                    selectionModel.selectShowedTasks();
+                    selectionModel.updateSelectionFromModel();
+                    updateTableStatusElement();
+                    return true;
+                },
+                isSelected:function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_SHOWEN_ITEMS);
+                }}),
+            new AutofilterMenuAction({
+                title:"○表示されているものをクリア",optionId:OPT_CLEAR_SHOWEN_ITEMS,
+                action:function act(ev) {
+                    selectionModel.clearShowedTasks();
+                    selectionModel.updateSelectionFromModel();
+                    updateTableStatusElement();
+                    return true;
+                },
+                isSelected:function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_SHOWEN_ITEMS);
+                }}),
             new AutofilterMenuAction({title:"----------"}),
             
-            new AutofilterMenuAction(
-                {
-                    title:"■全部チェック",optionId:OPT_SELECT_ALL_ITEMS,
-                    action:function act(ev) {
-                        selectionModel.selectAll();
-                        selectionModel.updateSelectionFromModel();
-                        updateTableStatusElement();
-                        return true;
-                    },
-                    isSelected:function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_ALL_ITEMS);
-                    }}),
-            new AutofilterMenuAction(
-                {
-                    title:"□全部クリア",optionId:OPT_CLEAR_ALL_ITEMS,
-                    action:function act(ev) {
-                        selectionModel.clearAll();
-                        selectionModel.updateSelectionFromModel();
-                        updateTableStatusElement();
-                        return true;
-                    },
-                    isSelected:function isSelected() {
-                        return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_ALL_ITEMS);
-                    }})];
+            new AutofilterMenuAction({
+                title:"■全部チェック",optionId:OPT_SELECT_ALL_ITEMS,
+                action:function act(ev) {
+                    selectionModel.selectAll();
+                    selectionModel.updateSelectionFromModel();
+                    updateTableStatusElement();
+                    return true;
+                },
+                isSelected:function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_SELECT_ALL_ITEMS);
+                }}),
+            new AutofilterMenuAction({
+                title:"□全部クリア",optionId:OPT_CLEAR_ALL_ITEMS,
+                action:function act(ev) {
+                    selectionModel.clearAll();
+                    selectionModel.updateSelectionFromModel();
+                    updateTableStatusElement();
+                    return true;
+                },
+                isSelected:function isSelected() {
+                    return (filterModel.selectionFilter && filterModel.selectionFilter.optionId == OPT_CLEAR_ALL_ITEMS);
+                }})];
         return actions;
     }
     
