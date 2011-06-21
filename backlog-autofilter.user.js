@@ -4,14 +4,14 @@
 // @include        https://*.backlog.jp/Find*
 // @include        https://*.backlog.jp/find/*
 // @require        http://kiwanami.net/prog/gm_update/UC-20080823.js
-// @version        0.3.0
+// @version        0.4.0
 // ==/UserScript==
 
 // LICENSE
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-20 16:30:45 sakurai>
+// Time-stamp: <2011-06-21 14:42:45 sakurai>
 
 
 //==================================================
@@ -24,7 +24,7 @@ if (typeof UpdateChecker != "undefined") {
         var uc = new UpdateChecker({
                 script_name: 'Backlog Autofilter'
                 ,script_url: af_url
-                ,current_version: '0.3.0' // ### VERSION ###
+                ,current_version: '0.4.0' // ### VERSION ###
             });
         GM_registerMenuCommand('Backlog AF - update check', function() { 
             GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
