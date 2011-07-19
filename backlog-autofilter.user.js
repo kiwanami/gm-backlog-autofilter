@@ -4,14 +4,14 @@
 // @include        https://*.backlog.jp/Find*
 // @include        https://*.backlog.jp/find/*
 // @require        http://kiwanami.net/prog/gm_update/UC-20080823.js
-// @version        0.4.0
+// @version        0.4.1
 // ==/UserScript==
 
 // LICENSE
 //    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-06-21 14:42:45 sakurai>
+// Time-stamp: <2011-07-19 16:41:06 sakurai>
 
 
 //==================================================
@@ -24,7 +24,7 @@ if (typeof UpdateChecker != "undefined") {
         var uc = new UpdateChecker({
                 script_name: 'Backlog Autofilter'
                 ,script_url: af_url
-                ,current_version: '0.4.0' // ### VERSION ###
+                ,current_version: '0.4.1' // ### VERSION ###
             });
         GM_registerMenuCommand('Backlog AF - update check', function() { 
             GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
@@ -3090,9 +3090,11 @@ BacklogTask.initByCSV = function(line,mapper) {
         t[mapper[i]] = cols[i];
     }
     for(var i in t) {
-        if (i == "id" || i.match(/Id$/) || i.match(/Hours/)) {
+        if (i == "id" || i.match(/Id$/)) {
             t[i] = parseInt(t[i],10) || t[i];
-        }
+        } else if (i.match(/Hours/)) {
+			t[i] = parseFloat(t[i]) || t[i];
+		}
     }
     t.description = t.description.replace(/\\\\r\\\n/g,"\n").replace(/\\\\r\\\\n/g,"\n");
     return t;
@@ -3108,6 +3110,23 @@ BacklogTask.defaultReportStrategies = {
         },
         reduce: function(values) {
             var sum = 0, count = 0;
+            if (values) {
+                for (var i=0,j=values.length; i<j; i++) {
+                    if (values[i] !== null) {
+                        count++;
+                        sum += values[i];
+                    }
+                }
+            }
+            return "合計 "+sum+"\n[ "+count+" / "+values.length+" ]"
+        }},
+    sumFloat: {
+        map: function(key, task) {
+            var h = task[key];
+            return (h === null || h === undefined || h == "") ? null : parseFloat(h);
+        },
+        reduce: function(values) {
+            var sum = 0.0, count = 0;
             if (values) {
                 for (var i=0,j=values.length; i<j; i++) {
                     if (values[i] !== null) {
@@ -3145,8 +3164,8 @@ BacklogTask.defaultReportStrategies = {
         }}
 };
 BacklogTask.reportStrategies = {
-    estimatedHours  : BacklogTask.defaultReportStrategies.sum,
-    actualHours     : BacklogTask.defaultReportStrategies.sum,
+    estimatedHours  : BacklogTask.defaultReportStrategies.sumFloat,
+    actualHours     : BacklogTask.defaultReportStrategies.sumFloat,
     issueTypeName   : BacklogTask.defaultReportStrategies.count,
     statusName      : BacklogTask.defaultReportStrategies.count,
     priorityName    : BacklogTask.defaultReportStrategies.count,
@@ -3278,9 +3297,9 @@ var BacklogAPI = {
     ],
     RESOLUTION: { // タスクを完了させた理由
         DONE           : 0,
-        REMAIN       : 1,
-        INVALID     : 2,
-        DUPLICATED   : 3,
+        REMAIN         : 1,
+        INVALID        : 2,
+        DUPLICATED     : 3,
         NOT_RECURRENCE : 4
     },
     RESOLUTIONS: [
@@ -3311,7 +3330,7 @@ var BacklogAPI = {
         RADIOBOX:        8
     },
     CUSTOM_FIELD_TYPES_REPORT: { // カスタムフィールドの統計タイプ
-        "3": BacklogTask.defaultReportStrategies.sum,
+        "3": BacklogTask.defaultReportStrategies.sumFloat,
         "5": BacklogTask.defaultReportStrategies.count,
         "6": BacklogTask.defaultReportStrategies.count,
         "7": BacklogTask.defaultReportStrategies.count,
