@@ -4,14 +4,14 @@
 // @include        https://*.backlog.jp/Find*
 // @include        https://*.backlog.jp/find/*
 // @require        http://kiwanami.net/prog/gm_update/UC-20080823.js
-// @version        0.4.1
+// @version        0.4.2
 // ==/UserScript==
 
 // LICENSE
-//    Copyright (c) 2009 Masashi Sakurai. All rights reserved.
+//    Copyright (c) 2009-2012 Masashi Sakurai. All rights reserved.
 //    http://www.opensource.org/licenses/mit-license.php
 // 
-// Time-stamp: <2011-07-19 16:41:06 sakurai>
+// Time-stamp: <2012-01-26 00:32:36 sakurai>
 
 
 //==================================================
@@ -24,7 +24,7 @@ if (typeof UpdateChecker != "undefined") {
         var uc = new UpdateChecker({
                 script_name: 'Backlog Autofilter'
                 ,script_url: af_url
-                ,current_version: '0.4.1' // ### VERSION ###
+                ,current_version: '0.4.2' // ### VERSION ###
             });
         GM_registerMenuCommand('Backlog AF - update check', function() { 
             GM_setValue('last_check_day',"Thu Jan 01 1970 00:00:00 GMT+0900");
@@ -164,7 +164,7 @@ var scripts = [
     "/script/jscalendar/lang/calendar-en.R20081128.js",
     "/script/jscalendar/lang/calendar-ja.R20081128.js",
     "/script/jscalendar/calendar-setup.R20081128.js",
-    "/script/popup-dialog.R20081128.js",
+    "https://d2t6uon39staj0.cloudfront.net/R20120112_4/script/backlog/popup-dialog.js",
     "/script/dragdrop.R20081128.js"
 ].map(function (url) {
     return E("script",{type:"text/javascript",src:url});
@@ -453,6 +453,7 @@ function buildTaskTable() {
     }
     
     function overrideContents() {
+		$("global")
         components.statusPanel.innerHTML  = "";
         components.summaryPanel.innerHTML = "";
         components.actionPanel.appendChild($("exportForm"));
@@ -464,8 +465,9 @@ function buildTaskTable() {
             });
 
         // NAVIボタン
-        var aa = $X("id('naviBar')//a");
-        [
+        var aa = $X("id('projectNav')//a");
+		if (aa.length ==0) aa = $X("id('naviBar')//a");
+       [
             E("span",{textContent:" "}),
             E("a",{href:aa[0].href,textContent:"[Home]",
                    id:"navi-home",title:"Home",target:"_blank"}),
@@ -488,7 +490,7 @@ function buildTaskTable() {
     
     function setupSettingMenu() {
         //設定ボタン
-        var img = E("img",{src:"/images/common/icons/ico_management_18.gif",alt:"表示設定"});
+        var img = E("img",{src:"https://d2t6uon39staj0.cloudfront.net/R20120112_4/shared/img/icon/ico_management_gear.png", alt:"表示設定"});
         var a = E("a",{href:"javascript:void(0);",alt:"表示設定"},[img]);
         components.actionPanel.appendChild(a);
         components.settingButton = a;
@@ -631,8 +633,8 @@ function buildTaskTable() {
                         return "<div class=\"issue-status-"+this.statusId+"\">"+this.statusName+"</div>";
                     },
                     priorityName: function() {
-                        return "<img src=\"/images/common/icons/ico_priority_"+
-                            this.priorityId+".gif\"/><span class=\"invisible\">"+
+                        return "<img src=\"https://d2t6uon39staj0.cloudfront.net/R20120112_4/shared/img/icon/icon_priority_"+
+                            this.priorityId+".png\"/><span class=\"invisible\">"+
                             this.priorityName+"</span>";
                     }
                 });
@@ -1352,7 +1354,7 @@ function execActionChangeLimit(event,components,afTable) {
     dialog.form = function(formElm,addRow) {
         limitElm = E("input",{type:"text",name:"limitDate",id:"limitDate",size:10});
         var spanElm = E("span");
-        spanElm.innerHTML = "<a href='javascript:void(0);' id='limitDateCalendar'><img src='/images/common/icons/ico_calendar02.gif' alt='' /><span>カレンダーから選択</span></a>";
+        spanElm.innerHTML = "<a href='javascript:void(0);' id='limitDateCalendar'><img src='https://d2t6uon39staj0.cloudfront.net/R20120112_4/images/common/icons/ico_calendar02.gif' alt='' /><span>カレンダーから選択</span></a>";
         spanElm.insertBefore(limitElm,spanElm.firstChild);
         addRow("期限日：",spanElm);
         commentElm = E("textarea",{name:"comment",rows:5},[]);
